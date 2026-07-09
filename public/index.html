@@ -195,6 +195,31 @@
       </div>
     </div>
 
+    <!-- RESULT VIEW: replaces the predict view once the final result is published -->
+    <div id="view-result" class="hidden">
+      <div class="result-wrap">
+        <!-- WINNERS (top) -->
+        <div class="card winners-hero" id="winnersHero">
+          <h2 class="section">🏆 Winners <span class="live" id="rvFt">FULL TIME</span></h2>
+          <div id="rvWinnersList"></div>
+        </div>
+        <!-- MATCH RESULT (below) -->
+        <div class="card result-card">
+          <div class="rv-match">
+            <div class="team">
+              <div class="flag" id="rvHomeFlag">🏠</div>
+              <h3 id="rvHomeName">Home</h3>
+            </div>
+            <div class="rv-score" id="rvScore">0 - 0</div>
+            <div class="team">
+              <div class="flag" id="rvAwayFlag">✈️</div>
+              <h3 id="rvAwayName">Away</h3>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ADMIN VIEW -->
     <div id="view-admin" class="hidden">
       <div class="wrap" style="grid-template-columns: 1fr">

@@ -145,13 +145,20 @@ function renderAuth() {
 // Predict view in Google mode when unauthorized — it never covers Admin, and in
 // Open mode it is never shown at all.
 function renderViews() {
-  const gateNeeded = currentView === 'predict'
-    && loginRequired() && !isAuthorized(auth.currentUser);
+  const onPredict = currentView === 'predict';
+  const authorized = !loginRequired() || isAuthorized(auth.currentUser);
+  const gateNeeded = onPredict && !authorized;
+  const final = resultFinal();
+  // once the result is final, the predict tab becomes the results screen
+  const showResult = onPredict && authorized && final;
+  const showPredict = onPredict && authorized && !final;
   $('authGate').classList.toggle('hidden', !gateNeeded);
-  $('view-predict').classList.toggle('hidden', currentView !== 'predict' || gateNeeded);
+  $('view-result').classList.toggle('hidden', !showResult);
+  $('view-predict').classList.toggle('hidden', !showPredict);
   $('view-admin').classList.toggle('hidden', currentView !== 'admin');
   $('nav-predict').classList.toggle('active', currentView === 'predict');
   $('nav-admin').classList.toggle('active', currentView === 'admin');
+  manageFireworks();   // run fireworks only while the results screen is visible
 }
 
 // ── reveal the page once match details + flag images are ready AND auth resolved ──
@@ -236,7 +243,16 @@ function renderMatch() {
   const predsCard = $('predsCard');
   if (predsCard) predsCard.classList.toggle('hidden', !(resultFinal() || (revealed && started)));
 
-  if (resultFinal()) subscribeConsensus();
+  if (resultFinal()) {
+    subscribeConsensus();
+    // fill the results screen banner (winners list is filled by renderConsensus)
+    $('rvHomeName').textContent = home.name;
+    $('rvAwayName').textContent = away.name;
+    $('rvHomeFlag').innerHTML = flagMarkup(home.flag);
+    $('rvAwayFlag').innerHTML = flagMarkup(away.flag);
+    $('rvScore').textContent = `${match.live.home} - ${match.live.away}`;
+    $('rvFt').textContent = match.live.label || 'FULL TIME';
+  }
 
   renderLive();            // live in-play score stays hidden
   manageResultPolling();   // fetch the FINAL score only after the match should be over
@@ -432,6 +448,74 @@ function celebrate() {
   })(start);
 }
 
+// ── continuous fireworks inside the winners card while the results screen is up ──
+let fw = null;                 // active fireworks state, or null
+let hasWinners = false;        // set by renderConsensus: are there exact-score winners?
+function manageFireworks() {
+  const on = !$('view-result').classList.contains('hidden') && hasWinners;
+  if (on) startFireworks(); else stopFireworks();
+}
+function stopFireworks() {
+  if (!fw) return;
+  cancelAnimationFrame(fw.raf);
+  clearInterval(fw.launcher);
+  removeEventListener('resize', fw.resize);
+  fw.canvas.remove();
+  fw = null;
+}
+function startFireworks() {
+  if (fw) return;
+  const host = $('winnersHero');
+  if (!host) return;
+  const canvas = document.createElement('canvas');
+  canvas.className = 'fw-layer';
+  host.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const resize = () => {
+    const w = host.clientWidth, h = host.clientHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  resize();
+  addEventListener('resize', resize);
+
+  const colors = ['#7c5cff', '#a78bfa', '#f0abfc', '#22c55e', '#fbbf24', '#ef4444', '#38bdf8'];
+  const particles = [];
+  const G = 0.03;
+  function burst() {
+    const w = host.clientWidth, h = host.clientHeight;
+    const x = w * (0.15 + Math.random() * 0.7), y = h * (0.15 + Math.random() * 0.5);
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const count = 26 + Math.floor(Math.random() * 16);
+    for (let i = 0; i < count; i++) {
+      const ang = (Math.PI * 2 * i) / count + Math.random() * 0.2;
+      const speed = 1.2 + Math.random() * 2.4;
+      particles.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+        life: 1, color, size: 1.3 + Math.random() * 1.4 });
+    }
+  }
+  burst();
+  const launcher = setInterval(burst, 900);   // keep launching → continuous
+
+  const raf0 = requestAnimationFrame(function frame() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const p of particles) { p.vy += G; p.x += p.vx; p.y += p.vy; p.vx *= 0.99; p.life -= 0.011; }
+    for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if (fw) fw.raf = requestAnimationFrame(frame);
+  });
+  fw = { canvas, resize, launcher, raf: raf0 };
+}
+
 // ── consensus: realtime over predictions collection (rules allow read only after you submit) ──
 function subscribeConsensus() {
   if (predsUnsub) return;
@@ -457,29 +541,41 @@ function renderConsensus(preds) {
   $('voteCount').textContent = n + ' prediction' + (n === 1 ? '' : 's');
 
   const result = finalScore();
+  const html = result ? winnersHTML(preds, result) : '';
+
+  // old winners card inside the (now hidden when final) predict view — kept in sync
   const card = $('winnersCard');
   if (card) {
     if (result) {
       $('winnersScore').textContent = `${result.h} - ${result.a}`;
       $('winnersFt').textContent = match?.live?.label || 'FULL TIME';
-      const winners = preds.filter(p => p.h === result.h && p.a === result.a);
-      if (winners.length) {
-        $('winnersList').innerHTML = winners.map(p => {
-          const ini = String(p.name).trim().slice(0, 2).toUpperCase();
-          return `<div class="lb-item winner"><div class="av">${esc(ini)}</div>
-            <div class="nm">${esc(p.name)}<small>Correct score 🏆</small></div>
-            <div class="pt">${p.h} - ${p.a}</div></div>`;
-        }).join('');
-      } else {
-        $('winnersList').innerHTML = `<div class="empty">No one nailed the exact score.</div>`;
-      }
+      $('winnersList').innerHTML = html;
       card.classList.remove('hidden');
     } else {
       card.classList.add('hidden');
     }
   }
 
+  // dedicated results screen winners list
+  if (result && $('rvWinnersList')) $('rvWinnersList').innerHTML = html;
+
+  // fireworks only when someone actually won the exact score
+  hasWinners = !!result && preds.some(p => p.h === result.h && p.a === result.a);
+  manageFireworks();
+
   $('lbList').innerHTML = predListHTML(preds, 'No predictions yet. Be first!', result);
+}
+
+// markup for the exact-score winners (or an empty-state message)
+function winnersHTML(preds, result) {
+  const winners = preds.filter(p => p.h === result.h && p.a === result.a);
+  if (!winners.length) return `<div class="empty">No one nailed the exact score.</div>`;
+  return winners.map(p => {
+    const ini = String(p.name).trim().slice(0, 2).toUpperCase();
+    return `<div class="lb-item winner"><div class="av">${esc(ini)}</div>
+      <div class="nm">${esc(p.name)}<small>Correct score 🏆</small></div>
+      <div class="pt">${p.h} - ${p.a}</div></div>`;
+  }).join('');
 }
 
 // build the individual-predictions markup, shared by the public + admin lists
