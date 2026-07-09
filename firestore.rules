@@ -10,9 +10,13 @@ service cloud.firestore {
     }
 
     function matchUnlocked() {
-      // missing match doc counts as unlocked so first writes aren't blocked
-      return !exists(/databases/$(database)/documents/config/match)
-        || get(/databases/$(database)/documents/config/match).data.locked != true;
+      // open unless: doc missing (open), manually locked, or kickoff time passed.
+      // data.get(key, default) avoids an error when a field is absent;
+      // missing kickoff defaults to year 2999 = effectively never auto-locks.
+      let ref = /databases/$(database)/documents/config/match;
+      return !exists(ref)
+        || (get(ref).data.get('locked', false) != true
+            && request.time < get(ref).data.get('kickoff', timestamp.date(2999, 1, 1)));
     }
     function iHavePredicted() {
       return request.auth != null

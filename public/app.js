@@ -45,6 +45,20 @@ onAuthStateChanged(auth, async user => {
   renderGate();
 });
 
+// ── lock state: manual lock OR kickoff time reached ──
+function kickoffMs() {
+  const k = match?.kickoff;
+  if (!k) return null;
+  if (typeof k.toMillis === 'function') return k.toMillis();     // Firestore Timestamp
+  if (typeof k.seconds === 'number') return k.seconds * 1000;    // plain object
+  return new Date(k).getTime();                                  // ISO fallback
+}
+function isLocked() {
+  if (match?.locked === true) return true;
+  const ms = kickoffMs();
+  return ms != null && Date.now() >= ms;
+}
+
 // ── predictions view ──
 function renderMatch() {
   if (!match) return;
@@ -61,8 +75,10 @@ function renderMatch() {
   $('winLbl').textContent = home.name + ' Win';
   $('lossLbl').textContent = away.name + ' Win';
 
-  const locked = !!match.locked;
+  const locked = isLocked();
+  const started = kickoffMs() != null && Date.now() >= kickoffMs();
   $('lockBadge').classList.toggle('hidden', !locked);
+  $('lockBadge').textContent = started ? '🔒 LOCKED — MATCH STARTED' : '🔒 PREDICTIONS LOCKED';
   $('submitBtn').disabled = locked;
   $('submitBtn').textContent = locked ? 'Predictions Locked' : 'Submit Prediction';
   document.querySelectorAll('.stepper button').forEach(b => b.disabled = locked);
@@ -77,7 +93,7 @@ async function submitPred() {
   const name = $('userName').value.trim();
   const msg = $('msg');
   if (!name) return flash(msg, 'Enter your name first.', true);
-  if (match?.locked) return flash(msg, 'Predictions are locked.', true);
+  if (isLocked()) return flash(msg, 'Predictions are locked.', true);
   const h = parseInt($('homeScore').value);
   const a = parseInt($('awayScore').value);
   try {
@@ -237,11 +253,15 @@ async function applyFdMatch() {
   try {
     await adminPost('setMatch', {
       home_name: m.home.name, home_flag: m.home.crest,
-      away_name: m.away.name, away_flag: m.away.crest, info: dt, stage
+      away_name: m.away.name, away_flag: m.away.crest, info: dt, stage,
+      kickoff: m.utcDate           // ISO → auto-lock at this time
     });
     flash($('fdMsg'), 'Applied: ' + m.home.name + ' vs ' + m.away.name, false);
   } catch (e) { flash($('fdMsg'), e.message, true); }
 }
+
+// tick every 20s so an open page auto-locks when kickoff passes (no refresh needed)
+setInterval(() => { if (match) renderMatch(); }, 20000);
 
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, saveMatch, toggleLock, clearVotes, resetAll,

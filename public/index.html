@@ -1,173 +1,232 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ProScore — World Cup Prediction</title>
-<link rel="stylesheet" href="styles.css">
-</head>
-<body>
-<div class="top"></div>
-<header>
-  <div class="logo">Pro<span>Score</span> World Cup</div>
-  <nav>
-    <a id="nav-predict" class="active" onclick="show('predict')">Predictions</a>
-    <a id="nav-admin" onclick="show('admin')">Admin</a>
-  </nav>
-  <span class="live" style="align-self:center">● LIVE</span>
-</header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ITCS — World Cup 2026 Prediction</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="top"></div>
+    <header>
+      <div class="logo"><span>ITCS</span> <span>Prediction Game 2026</span></div>
+      <nav>
+        <a id="nav-predict" class="active" onclick="show('predict')"
+          >Predictions</a
+        >
+        <a id="nav-admin" onclick="show('admin')">Admin</a>
+      </nav>
+      <span class="live" style="align-self: center">● LIVE</span>
+    </header>
 
-<!-- PREDICT VIEW -->
-<div id="view-predict">
-<div class="wrap">
-  <div>
-    <div class="card" style="border-left:4px solid var(--brand)">
-      <div class="match">
-        <div class="team">
-          <div class="flag" id="homeFlag">🏠</div>
-          <h3 id="homeName">Home</h3>
-          <div class="lbl">HOME TEAM</div>
-        </div>
-        <div class="mid">
-          <div class="pill" id="matchInfo">Match</div>
-          <div class="vs">VS</div>
-          <div class="sub" id="matchStage">Group Stage</div>
-          <div class="lockbadge hidden" id="lockBadge">🔒 PREDICTIONS LOCKED</div>
-        </div>
-        <div class="team">
-          <div class="flag" id="awayFlag">✈️</div>
-          <h3 id="awayName">Away</h3>
-          <div class="lbl">AWAY TEAM</div>
-        </div>
-      </div>
-    </div>
+    <!-- PREDICT VIEW -->
+    <div id="view-predict">
+      <div class="wrap">
+        <div>
+          <div class="card" style="border-left: 4px solid var(--brand)">
+            <div class="match">
+              <div class="team">
+                <div class="flag" id="homeFlag">🏠</div>
+                <h3 id="homeName">Home</h3>
+                <div class="lbl">HOME TEAM</div>
+              </div>
+              <div class="mid">
+                <div class="pill" id="matchInfo">Match</div>
+                <div class="vs">VS</div>
+                <div class="sub" id="matchStage">Group Stage</div>
+                <div class="lockbadge hidden" id="lockBadge">
+                  🔒 PREDICTIONS LOCKED
+                </div>
+              </div>
+              <div class="team">
+                <div class="flag" id="awayFlag">✈️</div>
+                <h3 id="awayName">Away</h3>
+                <div class="lbl">AWAY TEAM</div>
+              </div>
+            </div>
+          </div>
 
-    <div class="card" style="margin-top:20px">
-      <h2 class="section">🎯 Score Prediction</h2>
-      <div style="margin-bottom:16px">
-        <label class="f">YOUR NAME</label>
-        <input class="name" id="userName" placeholder="Enter your name" autocomplete="off">
-      </div>
-      <div class="score-row">
-        <div class="score-col">
-          <div class="cap" id="homeCap">HOME SCORE</div>
-          <div class="stepper">
-            <button class="dec" onclick="bump('home',-1)">−</button>
-            <input id="homeScore" value="0" readonly>
-            <button class="inc" onclick="bump('home',1)">+</button>
+          <div class="card" style="margin-top: 20px">
+            <h2 class="section">🎯 Score Prediction</h2>
+            <div style="margin-bottom: 16px">
+              <label class="f">YOUR NAME</label>
+              <input
+                class="name"
+                id="userName"
+                placeholder="Enter your name"
+                autocomplete="off"
+              />
+            </div>
+            <div class="score-row">
+              <div class="score-col">
+                <div class="cap" id="homeCap">HOME SCORE</div>
+                <div class="stepper">
+                  <button class="dec" onclick="bump('home', -1)">−</button>
+                  <input id="homeScore" value="0" readonly />
+                  <button class="inc" onclick="bump('home', 1)">+</button>
+                </div>
+              </div>
+              <div class="colon" style="margin-top: 22px">:</div>
+              <div class="score-col">
+                <div class="cap" id="awayCap">AWAY SCORE</div>
+                <div class="stepper">
+                  <button class="dec" onclick="bump('away', -1)">−</button>
+                  <input id="awayScore" value="0" readonly />
+                  <button class="inc" onclick="bump('away', 1)">+</button>
+                </div>
+              </div>
+            </div>
+            <hr />
+            <button
+              class="btn"
+              id="submitBtn"
+              style="width: 100%"
+              onclick="submitPred()"
+            >
+              Submit Prediction
+            </button>
+            <div id="msg" class="msg hidden"></div>
           </div>
         </div>
-        <div class="colon" style="margin-top:22px">:</div>
-        <div class="score-col">
-          <div class="cap" id="awayCap">AWAY SCORE</div>
-          <div class="stepper">
-            <button class="dec" onclick="bump('away',-1)">−</button>
-            <input id="awayScore" value="0" readonly>
-            <button class="inc" onclick="bump('away',1)">+</button>
+
+        <div class="side">
+          <!-- locked state: shown until this user submits -->
+          <div class="card locked-note" id="gateLocked">
+            <div class="lock-ico">🔒</div>
+            <h4 style="margin-bottom: 6px">PREDICTION RESULTS</h4>
+            <p class="sub">
+              Submit your prediction first to see the results.
+            </p>
+          </div>
+
+          <!-- revealed state: after submit -->
+          <div id="gateOpen" class="hidden">
+            <div class="card">
+              <h4>PREDICTION RESULTS <span class="live">LIVE</span></h4>
+              <div class="bar-row">
+                <div class="t">
+                  <span id="winLbl">Home Win</span><span id="winPct">0%</span>
+                </div>
+                <div class="track">
+                  <div
+                    class="fill"
+                    id="winBar"
+                    style="width: 0; background: var(--win)"
+                  ></div>
+                </div>
+              </div>
+              <div class="bar-row">
+                <div class="t">
+                  <span id="lossLbl">Away Win</span><span id="lossPct">0%</span>
+                </div>
+                <div class="track">
+                  <div
+                    class="fill"
+                    id="lossBar"
+                    style="width: 0; background: var(--loss)"
+                  ></div>
+                </div>
+              </div>
+              <div class="bar-row">
+                <div class="t">
+                  <span>Draw</span><span id="drawPct">0%</span>
+                </div>
+                <div class="track">
+                  <div
+                    class="fill"
+                    id="drawBar"
+                    style="width: 0; background: var(--draw)"
+                  ></div>
+                </div>
+              </div>
+              <div class="count" id="voteCount">0 predictions</div>
+            </div>
+
+            <div class="card" style="margin-top: 20px">
+              <h4>PREDICTIONS</h4>
+              <div id="lbList"></div>
+            </div>
           </div>
         </div>
       </div>
-      <hr>
-      <button class="btn" id="submitBtn" style="width:100%" onclick="submitPred()">Submit Prediction</button>
-      <div id="msg" class="msg hidden"></div>
-    </div>
-  </div>
-
-  <div class="side">
-    <!-- locked state: shown until this user submits -->
-    <div class="card locked-note" id="gateLocked">
-      <div class="lock-ico">🔒</div>
-      <h4 style="margin-bottom:6px">OFFICE CONSENSUS</h4>
-      <p class="sub">Submit your prediction first to reveal how the office voted.</p>
     </div>
 
-    <!-- revealed state: after submit -->
-    <div id="gateOpen" class="hidden">
-      <div class="card">
-        <h4>OFFICE CONSENSUS <span class="live">LIVE</span></h4>
-        <div class="bar-row">
-          <div class="t"><span id="winLbl">Home Win</span><span id="winPct">0%</span></div>
-          <div class="track"><div class="fill" id="winBar" style="width:0;background:var(--win)"></div></div>
+    <!-- ADMIN VIEW -->
+    <div id="view-admin" class="hidden">
+      <div class="wrap" style="grid-template-columns: 1fr">
+        <div class="card">
+          <h2 class="section">⚙️ Match Setup</h2>
+          <div style="margin-bottom: 16px; max-width: 280px">
+            <label class="f">ADMIN KEY</label>
+            <input
+              class="txt"
+              id="adminKey"
+              type="password"
+              placeholder="admin key"
+            />
+          </div>
+          <div class="import-box">
+            <div class="f" style="margin-bottom: 10px">
+              ⚽ IMPORT REAL MATCH (football-data.org)
+            </div>
+            <div class="admin-grid" style="margin-bottom: 12px">
+              <div>
+                <label class="f">COMPETITION</label>
+                <select id="fdComp"></select>
+              </div>
+              <div>
+                <label class="f">MATCH</label>
+                <select id="fdMatch">
+                  <option value="">— load competition first —</option>
+                </select>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="btn ghost" onclick="loadFdMatches()">
+                Load Matches
+              </button>
+              <button class="btn" onclick="applyFdMatch()">
+                Use Selected Match
+              </button>
+            </div>
+            <div id="fdMsg" class="msg hidden"></div>
+          </div>
+          <hr />
+          <div class="f" style="margin-bottom: 10px">✎ OR SET MANUALLY</div>
+          <div class="admin-grid">
+            <div>
+              <label class="f">HOME TEAM</label>
+              <select id="aHome" class="sel"></select>
+            </div>
+            <div>
+              <label class="f">AWAY TEAM</label>
+              <select id="aAway" class="sel"></select>
+            </div>
+            <div>
+              <label class="f">MATCH INFO</label>
+              <input id="aInfo" placeholder="Dec 14, 2024 • 20:00 GMT" />
+            </div>
+            <div>
+              <label class="f">STAGE</label>
+              <input id="aStage" placeholder="Group Stage • Match 42" />
+            </div>
+          </div>
+          <hr />
+          <div class="row-actions">
+            <button class="btn" onclick="saveMatch()">Save Match</button>
+            <button class="btn ghost" onclick="toggleLock()" id="lockBtn">
+              Lock Predictions
+            </button>
+            <span class="link" onclick="clearVotes()">Clear predictions</span>
+            <span class="link" style="color: var(--loss)" onclick="resetAll()"
+              >Reset all</span
+            >
+          </div>
+          <div id="adminMsg" class="msg hidden"></div>
         </div>
-        <div class="bar-row">
-          <div class="t"><span id="lossLbl">Away Win</span><span id="lossPct">0%</span></div>
-          <div class="track"><div class="fill" id="lossBar" style="width:0;background:var(--loss)"></div></div>
-        </div>
-        <div class="bar-row">
-          <div class="t"><span>Draw</span><span id="drawPct">0%</span></div>
-          <div class="track"><div class="fill" id="drawBar" style="width:0;background:var(--draw)"></div></div>
-        </div>
-        <div class="count" id="voteCount">0 predictions</div>
       </div>
+    </div>
 
-      <div class="card" style="margin-top:20px">
-        <h4>PREDICTIONS</h4>
-        <div id="lbList"></div>
-      </div>
-    </div>
-  </div>
-</div>
-</div>
-
-<!-- ADMIN VIEW -->
-<div id="view-admin" class="hidden">
-<div class="wrap" style="grid-template-columns:1fr">
-  <div class="card">
-    <h2 class="section">⚙️ Match Setup</h2>
-    <div style="margin-bottom:16px;max-width:280px">
-      <label class="f">ADMIN KEY</label>
-      <input class="txt" id="adminKey" type="password" placeholder="admin key">
-    </div>
-    <div class="import-box">
-      <div class="f" style="margin-bottom:10px">⚽ IMPORT REAL MATCH (football-data.org)</div>
-      <div class="admin-grid" style="margin-bottom:12px">
-        <div>
-          <label class="f">COMPETITION</label>
-          <select id="fdComp"></select>
-        </div>
-        <div>
-          <label class="f">MATCH</label>
-          <select id="fdMatch"><option value="">— load competition first —</option></select>
-        </div>
-      </div>
-      <div class="row-actions">
-        <button class="btn ghost" onclick="loadFdMatches()">Load Matches</button>
-        <button class="btn" onclick="applyFdMatch()">Use Selected Match</button>
-      </div>
-      <div id="fdMsg" class="msg hidden"></div>
-    </div>
-    <hr>
-    <div class="f" style="margin-bottom:10px">✎ OR SET MANUALLY</div>
-    <div class="admin-grid">
-      <div>
-        <label class="f">HOME TEAM</label>
-        <select id="aHome" class="sel"></select>
-      </div>
-      <div>
-        <label class="f">AWAY TEAM</label>
-        <select id="aAway" class="sel"></select>
-      </div>
-      <div>
-        <label class="f">MATCH INFO</label>
-        <input id="aInfo" placeholder="Dec 14, 2024 • 20:00 GMT">
-      </div>
-      <div>
-        <label class="f">STAGE</label>
-        <input id="aStage" placeholder="Group Stage • Match 42">
-      </div>
-    </div>
-    <hr>
-    <div class="row-actions">
-      <button class="btn" onclick="saveMatch()">Save Match</button>
-      <button class="btn ghost" onclick="toggleLock()" id="lockBtn">Lock Predictions</button>
-      <span class="link" onclick="clearVotes()">Clear predictions</span>
-      <span class="link" style="color:var(--loss)" onclick="resetAll()">Reset all</span>
-    </div>
-    <div id="adminMsg" class="msg hidden"></div>
-  </div>
-</div>
-</div>
-
-<script type="module" src="app.js"></script>
-</body>
+    <script type="module" src="app.js"></script>
+  </body>
 </html>

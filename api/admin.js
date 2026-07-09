@@ -3,7 +3,7 @@
 // POST /api/admin  body: { action, adminKey, ...payload }
 //   action: setMatch | lock | clear | reset
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
 const DEFAULT_MATCH = {
   home_name: 'Brazil', home_flag: 'br',
@@ -37,14 +37,19 @@ export default async function handler(req, res) {
     const matchRef = db.doc('config/match');
 
     if (action === 'setMatch') {
-      await matchRef.set({
+      const data = {
         home_name: (body.home_name || 'Home').trim(),
         home_flag: (body.home_flag || '').trim(),
         away_name: (body.away_name || 'Away').trim(),
         away_flag: (body.away_flag || '').trim(),
         info: (body.info || '').trim(),
-        stage: (body.stage || '').trim()
-      }, { merge: true });
+        stage: (body.stage || '').trim(),
+        locked: false
+      };
+      // kickoff (ISO string) → Firestore Timestamp for auto-lock; null clears it
+      if (body.kickoff) data.kickoff = Timestamp.fromDate(new Date(body.kickoff));
+      else data.kickoff = null;
+      await matchRef.set(data, { merge: true });
       return res.json({ ok: true });
     }
     if (action === 'lock') {
