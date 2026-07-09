@@ -15,7 +15,7 @@
     <div class="top"></div>
     <header>
       <div class="logo"><span>ITCS</span> <span>Prediction Game 2026</span></div>
-      <nav id="mainNav" class="hidden">
+      <nav id="mainNav">
         <a id="nav-predict" class="active" onclick="show('predict')"
           >Predictions</a
         >
@@ -268,13 +268,23 @@
             Predictions auto-lock at kickoff. Leave blank to lock manually only.
           </div>
           <hr />
+          <div class="toggle-row">
+            <div class="toggle-txt">
+              <div class="toggle-title">Require Google sign-in</div>
+              <div class="f sub" id="authModeHint">
+                Off = anyone can predict (open). On = one prediction per Google account.
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="authModeToggle" onchange="toggleAuthMode()" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <hr />
           <div class="row-actions">
             <button class="btn" onclick="saveMatch()">Save Match</button>
             <button class="btn ghost" onclick="toggleLock()" id="lockBtn">
               Lock Predictions
-            </button>
-            <button class="btn ghost" onclick="toggleAuthMode()" id="authModeBtn">
-              Login: Open (OFF)
             </button>
             <span class="link" onclick="clearVotes()">Clear predictions</span>
             <span class="link" style="color: var(--loss)" onclick="resetAll()"

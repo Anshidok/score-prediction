@@ -6,7 +6,15 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+  background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased;
+  /* stop tap → text-selection on mobile UI, and the grey tap-flash */
+  -webkit-user-select:none;-moz-user-select:none;user-select:none;
+  -webkit-tap-highlight-color:transparent}
+/* keep selection where it's genuinely useful: real inputs + the predictions list */
+input,textarea,select,#lbList,#adminLbList{
+  -webkit-user-select:text;-moz-user-select:text;user-select:text}
+/* readonly score displays are UI, not text — never selectable */
+#homeScore,#awayScore{-webkit-user-select:none;-moz-user-select:none;user-select:none}
 .top{height:4px;background:linear-gradient(90deg,#7c5cff,#a78bfa,#f0abfc)}
 header{background:var(--card);border-bottom:1px solid var(--line);
   display:flex;align-items:center;justify-content:space-between;padding:16px 28px}
@@ -94,6 +102,18 @@ input.name:focus,input.txt:focus{border-color:var(--brand)}
 .user-chip{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;color:var(--ink)}
 .user-chip .signout{cursor:pointer;color:var(--muted);font-weight:600;font-size:13px;text-decoration:none}
 .user-chip .signout:hover{color:var(--loss)}
+
+/* admin toggle switch (Require Google sign-in) */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.toggle-txt .toggle-title{font-size:14px;font-weight:700;color:var(--ink)}
+.toggle-txt .sub{margin-top:2px}
+.switch{position:relative;display:inline-block;width:48px;height:28px;flex:0 0 auto}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;inset:0;cursor:pointer;background:#cbd0dc;border-radius:999px;transition:.2s}
+.switch .slider::before{content:"";position:absolute;height:22px;width:22px;left:3px;top:3px;
+  background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.switch input:checked + .slider{background:var(--brand)}
+.switch input:checked + .slider::before{transform:translateX(20px)}
 
 /* sign-in gate */
 .auth-gate{max-width:1080px;margin:60px auto;padding:0 20px;display:flex;justify-content:center}

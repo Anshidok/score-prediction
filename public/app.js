@@ -88,10 +88,11 @@ async function handleAuth() {
   }
 
   const authed = isAuthorized(user);
-  renderAuth(user, authed);
+  renderAuth(); renderViews();
 
   if (!authed) {
-    // signed out / anonymous-in-Google-mode → reset state, show the sign-in gate
+    // signed out / anonymous-in-Google-mode → reset prediction state.
+    // (Admin stays reachable via its key — renderViews handles that.)
     uid = null; myPred = null; revealed = false; loadedForUid = null;
     if (predsUnsub) { predsUnsub(); predsUnsub = null; }
     resetForm();
@@ -123,22 +124,29 @@ function resetForm() {
   const nm = $('nameMsg'); if (nm) nm.classList.add('hidden');
 }
 
-// toggle the sign-in gate vs the app, and the header user chip
-function renderAuth(user, authed = isAuthorized(user)) {
-  const requireLogin = loginRequired();
-  // the gate only appears in Google mode when the user isn't authorized
-  $('authGate').classList.toggle('hidden', authed || !requireLogin);
-  $('mainNav').classList.toggle('hidden', !authed);
-  // the header chip + sign-out only make sense for a real (named) account
-  const showChip = authed && requireLogin && user && !user.isAnonymous;
+let currentView = 'predict';   // which top-level view is selected
+
+// header: the nav is ALWAYS available (Admin is protected by its key, not by
+// login); the user chip + Sign out apply only to a real (named) account.
+function renderAuth() {
+  const user = auth.currentUser;
+  $('mainNav').classList.remove('hidden');
+  const showChip = !!user && !user.isAnonymous;
   $('userChip').classList.toggle('hidden', !showChip);
   if (showChip) $('userChipName').textContent = user.displayName || user.email || 'Signed in';
-  if (authed) {
-    $('view-predict').classList.remove('hidden');
-  } else {
-    $('view-predict').classList.add('hidden');
-    $('view-admin').classList.add('hidden');
-  }
+}
+
+// SINGLE authority for what's on screen. The sign-in gate only covers the
+// Predict view in Google mode when unauthorized — it never covers Admin, and in
+// Open mode it is never shown at all.
+function renderViews() {
+  const gateNeeded = currentView === 'predict'
+    && loginRequired() && !isAuthorized(auth.currentUser);
+  $('authGate').classList.toggle('hidden', !gateNeeded);
+  $('view-predict').classList.toggle('hidden', currentView !== 'predict' || gateNeeded);
+  $('view-admin').classList.toggle('hidden', currentView !== 'admin');
+  $('nav-predict').classList.toggle('active', currentView === 'predict');
+  $('nav-admin').classList.toggle('active', currentView === 'admin');
 }
 
 // ── reveal the page once match details + flag images are ready AND auth resolved ──
@@ -160,7 +168,7 @@ async function revealPage() {
   $('loader').classList.add('hidden');
 }
 // safety net: never trap the user on the loader if Firestore/auth is unreachable
-setTimeout(() => { if (!authResolved) renderAuth(null); revealPage(); }, 8000);
+setTimeout(() => { renderAuth(); renderViews(); revealPage(); }, 8000);
 
 // ── lock state: manual lock OR kickoff time reached ──
 function kickoffMs() {
@@ -424,10 +432,8 @@ function set(k, v) { $(k + 'Pct').textContent = v + '%'; $(k + 'Bar').style.widt
 // ── view switch ──
 let adminUnlocked = false;
 function show(v) {
-  $('view-predict').classList.toggle('hidden', v !== 'predict');
-  $('view-admin').classList.toggle('hidden', v !== 'admin');
-  $('nav-predict').classList.toggle('active', v === 'predict');
-  $('nav-admin').classList.toggle('active', v === 'admin');
+  currentView = v;
+  renderViews();
   if (v === 'admin') renderAdminGate(); else stopAdminPreds();
 }
 
@@ -504,19 +510,24 @@ function fillAdmin() {
     $('aStage').value = match.stage || '';
     $('aKick').value = match.kickoff ? msToLocalInput(kickoffMs()) : '';
     $('lockBtn').textContent = match.locked ? 'Unlock Predictions' : 'Lock Predictions';
-    const req = match.requireLogin === true;
-    $('authModeBtn').textContent = req ? 'Login: Google (ON)' : 'Login: Open (OFF)';
-    $('authModeBtn').classList.toggle('ghost', !req);
+    syncAuthToggle();
   }
 }
+// reflect the server's current requireLogin flag on the switch
+function syncAuthToggle() {
+  const t = $('authModeToggle');
+  if (t) t.checked = match?.requireLogin === true;
+}
 async function toggleAuthMode() {
-  const next = !(match?.requireLogin === true);
-  const verb = next ? 'require Google sign-in' : 'allow open (anonymous) predictions';
-  if (!confirm(`Switch login mode to: ${verb}?`)) return;
+  const next = $('authModeToggle').checked;   // desired state after the click
   try {
     await adminPost('authmode', { requireLogin: next });
-    flash($('adminMsg'), 'Login mode updated.', false);
-  } catch (e) { flash($('adminMsg'), e.message, true); }
+    flash($('adminMsg'),
+      next ? 'Google sign-in is now required.' : 'Open mode — anyone can predict.', false);
+  } catch (e) {
+    $('authModeToggle').checked = !next;       // revert the switch on failure
+    flash($('adminMsg'), e.message, true);
+  }
 }
 async function saveMatch() {
   const home = teamByName($('aHome').value), away = teamByName($('aAway').value);
