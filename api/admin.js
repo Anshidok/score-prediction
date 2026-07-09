@@ -9,7 +9,7 @@ const DEFAULT_MATCH = {
   home_name: 'Brazil', home_flag: 'br',
   away_name: 'France', away_flag: 'fr',
   info: 'Dec 14, 2024 • 20:00 GMT', stage: 'Group Stage • Match 42',
-  locked: false, requireLogin: false
+  locked: false, requireLogin: false, fd_id: null, live: null
 };
 
 function admin() {
@@ -55,6 +55,9 @@ export default async function handler(req, res) {
       // kickoff (ISO string) → Firestore Timestamp for auto-lock; null clears it
       if (body.kickoff) data.kickoff = Timestamp.fromDate(new Date(body.kickoff));
       else data.kickoff = null;
+      // football-data id enables live scores; changing the match clears old live data
+      data.fd_id = body.fd_id != null ? body.fd_id : null;
+      data.live = null;
       await matchRef.set(data, { merge: true });
       return res.json({ ok: true });
     }
@@ -70,6 +73,22 @@ export default async function handler(req, res) {
     if (action === 'authmode') {
       // true → require Google login; false → open (anonymous) predictions
       await matchRef.set({ requireLogin: !!body.requireLogin }, { merge: true });
+      return res.json({ ok: true });
+    }
+    if (action === 'result') {
+      // manually publish (or clear) the FINAL score → drives the winners feature.
+      // Works for ANY match, incl. manual ones with no football-data id.
+      if (body.clear) {
+        await matchRef.set({ live: null }, { merge: true });
+        return res.json({ ok: true });
+      }
+      const home = Number(body.home), away = Number(body.away);
+      if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0 || home > 99 || away > 99) {
+        return res.status(400).json({ error: 'Enter valid home/away scores.' });
+      }
+      await matchRef.set({
+        live: { home, away, status: 'FINISHED', label: 'FULL TIME', ts: Date.now() }
+      }, { merge: true });
       return res.json({ ok: true });
     }
     if (action === 'clear') {

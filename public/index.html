@@ -55,7 +55,10 @@
               </div>
               <div class="mid">
                 <div class="pill" id="matchInfo">Match</div>
-                <div class="vs">VS</div>
+                <div class="vs" id="vsLabel">VS</div>
+                <!-- live score: replaces VS once the real match kicks off -->
+                <div class="live-score hidden" id="liveScore">0 - 0</div>
+                <div class="live-status hidden" id="liveStatus"></div>
                 <div class="sub" id="matchStage">Group Stage</div>
                 <div class="lockbadge hidden" id="lockBadge">
                   🔒 PREDICTIONS LOCKED
@@ -134,8 +137,13 @@
             </p>
           </div>
 
-          <!-- revealed state: after submit -->
           <div id="gateOpen" class="hidden">
+            <div class="card hidden" id="winnersCard">
+              <h4>🏆 WINNERS <span class="live" id="winnersFt">FULL TIME</span></h4>
+              <div class="result-score" id="winnersScore">0 - 0</div>
+              <div id="winnersList"></div>
+            </div>
+
             <div class="card">
               <h4>PREDICTION RESULTS <span class="live">LIVE</span></h4>
               <div class="bar-row">
@@ -279,6 +287,25 @@
               <input type="checkbox" id="authModeToggle" onchange="toggleAuthMode()" />
               <span class="slider"></span>
             </label>
+          </div>
+          <hr />
+          <div class="f" style="margin-bottom: 10px">
+            🏁 FINAL RESULT (publishes winners)
+          </div>
+          <div class="result-row">
+            <span class="res-team" id="resHomeLbl">Home</span>
+            <input class="res-in" id="resHome" type="number" min="0" max="99" value="0" />
+            <span class="res-dash">–</span>
+            <input class="res-in" id="resAway" type="number" min="0" max="99" value="0" />
+            <span class="res-team" id="resAwayLbl">Away</span>
+          </div>
+          <div class="row-actions" style="margin-top: 12px">
+            <button class="btn" onclick="publishResult()">Publish Result</button>
+            <span class="link" onclick="clearResult()">Clear result</span>
+          </div>
+          <div class="f sub" style="margin-top: 6px">
+            Sets the final score to FULL TIME and reveals winners to everyone. Works for
+            manual matches too — use it to test before a real match.
           </div>
           <hr />
           <div class="row-actions">

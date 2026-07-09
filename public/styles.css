@@ -44,6 +44,10 @@ nav a.active{color:var(--ink);border-bottom:2px solid var(--brand)}
 .vs{font-size:26px;font-weight:800;color:#d6dae4;margin:6px 0}
 .sub{font-size:12px;color:var(--muted)}
 .lockbadge{background:#fee2e2;color:#dc2626;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;margin-top:8px;display:inline-block}
+.live-score{font-size:34px;font-weight:800;color:var(--ink);line-height:1;margin:4px 0;letter-spacing:1px}
+.live-status{font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted);text-transform:uppercase}
+.live-status.is-live{color:#dc2626}
+.live-status.is-live::before{content:"● "}
 h2.section{font-size:16px;font-weight:800;margin-bottom:18px;display:flex;align-items:center;gap:8px}
 .score-row{display:flex;align-items:center;justify-content:center;gap:24px;margin:8px 0 4px}
 .score-col{text-align:center}
@@ -103,6 +107,15 @@ input.name:focus,input.txt:focus{border-color:var(--brand)}
 .user-chip{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;color:var(--ink)}
 .user-chip .signout{cursor:pointer;color:var(--muted);font-weight:600;font-size:13px;text-decoration:none}
 .user-chip .signout:hover{color:var(--loss)}
+
+/* admin: publish final result */
+.result-row{display:flex;align-items:center;justify-content:center;gap:10px}
+.result-row .res-team{font-size:13px;font-weight:700;color:var(--ink);min-width:60px}
+.result-row .res-team:last-child{text-align:right}
+.result-row .res-in{width:60px;height:44px;text-align:center;font-size:20px;font-weight:800;
+  border:1px solid var(--line);border-radius:10px;outline:none}
+.result-row .res-in:focus{border-color:var(--brand)}
+.result-row .res-dash{font-size:20px;font-weight:800;color:var(--muted)}
 
 /* admin toggle switch (Require Google sign-in) */
 .toggle-row{display:flex;align-items:center;justify-content:space-between;gap:16px}
@@ -186,3 +199,16 @@ input.name:focus,input.txt:focus{border-color:var(--brand)}
   .score-row{gap:8px}
   .flag{width:42px;height:42px}
 }
+
+/* Winner styling */
+.lb-item.winner {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+.result-score {
+  font-size: 22px;
+  font-weight: 800;
+  text-align: center;
+  margin: 4px 0 12px;
+}
+

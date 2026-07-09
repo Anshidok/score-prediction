@@ -192,6 +192,12 @@ function matchStarted() {
   const ms = kickoffMs();
   return ms != null && Date.now() >= ms;
 }
+function resultFinal() {
+  return match?.live?.status === 'FINISHED' && match?.live?.home != null;
+}
+function finalScore() {
+  return resultFinal() ? { h: match.live.home, a: match.live.away } : null;
+}
 // ms → 'YYYY-MM-DDTHH:mm' in LOCAL time, for a datetime-local input
 function msToLocalInput(ms) {
   const d = new Date(ms), p = n => String(n).padStart(2, '0');
@@ -226,9 +232,42 @@ function renderMatch() {
   renderMine();     // refresh the private "your prediction" line (team names may have loaded)
   renderNameLock(); // keep the name field vs "Playing as" label in sync
 
-  // the individual predictions list stays hidden until the match kicks off
+  // the predictions list shows once the result is final, or after kickoff to a predictor
   const predsCard = $('predsCard');
-  if (predsCard) predsCard.classList.toggle('hidden', !(revealed && started));
+  if (predsCard) predsCard.classList.toggle('hidden', !(resultFinal() || (revealed && started)));
+
+  if (resultFinal()) subscribeConsensus();
+
+  renderLive();            // live in-play score stays hidden
+  manageResultPolling();   // fetch the FINAL score only after the match should be over
+}
+
+// ── live in-play score: DISABLED ──
+// Keep the "VS" label and never display a running score during the match.
+function renderLive() {
+  $('vsLabel').classList.remove('hidden');
+  $('liveScore').classList.add('hidden');
+  $('liveStatus').classList.add('hidden');
+}
+
+// ── final-result fetch: frugal, for the winners feature ──
+// We do NOT poll during play. Only once the match should be over (kickoff +
+// RESULT_POLL_AFTER_MS) do we ask /api/live for the final score, and only until it
+// reports FINISHED — then we stop. The server throttles the actual football-data
+// calls, and the result lands in config/match.live (delivered by snapshot).
+const RESULT_POLL_AFTER_MS = 100 * 60 * 1000;   // ~100 min after kickoff
+let resultTimer = null;
+async function pingResult() { try { await fetch('/api/live'); } catch {} }
+function manageResultPolling() {
+  const ms = kickoffMs();
+  const dueForResult = ms != null && Date.now() >= ms + RESULT_POLL_AFTER_MS;
+  const needResult = dueForResult && match?.fd_id && !resultFinal();
+  if (needResult && !resultTimer) {
+    pingResult();                                  // fetch once immediately
+    resultTimer = setInterval(pingResult, 60000);  // then every 60s until FINISHED
+  } else if (!needResult && resultTimer) {
+    clearInterval(resultTimer); resultTimer = null;
+  }
 }
 
 // prefill the form with the user's saved pick — called once, never on the tick,
@@ -403,12 +442,13 @@ function subscribeConsensus() {
 }
 
 function renderGate() {
-  $('gateLocked').classList.toggle('hidden', revealed);
-  $('gateOpen').classList.toggle('hidden', !revealed);
+  const open = revealed || resultFinal();
+  $('gateLocked').classList.toggle('hidden', open);
+  $('gateOpen').classList.toggle('hidden', !open);
 }
 
 function renderConsensus(preds) {
-  if (!revealed) return;
+  if (!revealed && !resultFinal()) return;
   const n = preds.length;
   let w = 0, l = 0, d = 0;
   for (const p of preds) { if (p.h > p.a) w++; else if (p.h < p.a) l++; else d++; }
@@ -416,19 +456,59 @@ function renderConsensus(preds) {
   set('win', pc(w)); set('loss', pc(l)); set('draw', pc(d));
   $('voteCount').textContent = n + ' prediction' + (n === 1 ? '' : 's');
 
-  $('lbList').innerHTML = predListHTML(preds, 'No predictions yet. Be first!');
+  const result = finalScore();
+  const card = $('winnersCard');
+  if (card) {
+    if (result) {
+      $('winnersScore').textContent = `${result.h} - ${result.a}`;
+      $('winnersFt').textContent = match?.live?.label || 'FULL TIME';
+      const winners = preds.filter(p => p.h === result.h && p.a === result.a);
+      if (winners.length) {
+        $('winnersList').innerHTML = winners.map(p => {
+          const ini = String(p.name).trim().slice(0, 2).toUpperCase();
+          return `<div class="lb-item winner"><div class="av">${esc(ini)}</div>
+            <div class="nm">${esc(p.name)}<small>Correct score 🏆</small></div>
+            <div class="pt">${p.h} - ${p.a}</div></div>`;
+        }).join('');
+      } else {
+        $('winnersList').innerHTML = `<div class="empty">No one nailed the exact score.</div>`;
+      }
+      card.classList.remove('hidden');
+    } else {
+      card.classList.add('hidden');
+    }
+  }
+
+  $('lbList').innerHTML = predListHTML(preds, 'No predictions yet. Be first!', result);
 }
 
 // build the individual-predictions markup, shared by the public + admin lists
-function predListHTML(preds, emptyMsg) {
+function predListHTML(preds, emptyMsg, result) {
   if (!preds.length) return `<div class="empty">${esc(emptyMsg || 'No predictions yet.')}</div>`;
   const home = match?.home_name || 'HOME', away = match?.away_name || 'AWAY';
-  return preds.slice().sort((a, b) => b.ts - a.ts).map(p => {
+  
+  const sortedPreds = preds.slice();
+  if (result) {
+    sortedPreds.sort((a, b) => {
+      const aWon = a.h === result.h && a.a === result.a;
+      const bWon = b.h === result.h && b.a === result.a;
+      if (aWon && !bWon) return -1;
+      if (!aWon && bWon) return 1;
+      return b.ts - a.ts;
+    });
+  } else {
+    sortedPreds.sort((a, b) => b.ts - a.ts);
+  }
+
+  return sortedPreds.map(p => {
     const res = p.h > p.a ? home.slice(0,3).toUpperCase() + ' win'
               : p.h < p.a ? away.slice(0,3).toUpperCase() + ' win' : 'Draw';
     const ini = String(p.name).trim().slice(0, 2).toUpperCase();
-    return `<div class="lb-item"><div class="av">${esc(ini)}</div>
-      <div class="nm">${esc(p.name)}<small>${esc(res)}</small></div>
+    const won = result && p.h === result.h && p.a === result.a;
+    const winnerClass = won ? ' winner' : '';
+    const trophy = won ? ' 🏆' : '';
+    return `<div class="lb-item${winnerClass}"><div class="av">${esc(ini)}</div>
+      <div class="nm">${esc(p.name)}${trophy}<small>${esc(res)}</small></div>
       <div class="pt">${p.h} - ${p.a}</div></div>`;
   }).join('');
 }
@@ -470,7 +550,7 @@ let adminPredsTimer = null;
 async function loadAdminPreds() {
   try {
     const { preds } = await adminPost('list', {});
-    $('adminLbList').innerHTML = predListHTML(preds || [], 'No predictions yet.');
+    $('adminLbList').innerHTML = predListHTML(preds || [], 'No predictions yet.', finalScore());
   } catch (e) {
     $('adminLbList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
@@ -516,7 +596,30 @@ function fillAdmin() {
     $('aKick').value = match.kickoff ? msToLocalInput(kickoffMs()) : '';
     $('lockBtn').textContent = match.locked ? 'Unlock Predictions' : 'Lock Predictions';
     syncAuthToggle();
+    // final-result box: label the score inputs with the team names, seed with any
+    // already-published result
+    $('resHomeLbl').textContent = match.home_name || 'Home';
+    $('resAwayLbl').textContent = match.away_name || 'Away';
+    if (match.live && match.live.home != null) {
+      $('resHome').value = match.live.home;
+      $('resAway').value = match.live.away;
+    }
   }
+}
+async function publishResult() {
+  const home = parseInt($('resHome').value), away = parseInt($('resAway').value);
+  if (isNaN(home) || isNaN(away)) return flash($('adminMsg'), 'Enter both scores.', true);
+  try {
+    await adminPost('result', { home, away });
+    flash($('adminMsg'), `Result published: ${home} - ${away} — winners are now live.`, false);
+  } catch (e) { flash($('adminMsg'), e.message, true); }
+}
+async function clearResult() {
+  if (!confirm('Clear the published result? (winners will be hidden again)')) return;
+  try {
+    await adminPost('result', { clear: true });
+    flash($('adminMsg'), 'Result cleared.', false);
+  } catch (e) { flash($('adminMsg'), e.message, true); }
 }
 // reflect the server's current requireLogin flag on the switch
 function syncAuthToggle() {
@@ -602,7 +705,8 @@ async function applyFdMatch() {
     await adminPost('setMatch', {
       home_name: m.home.name, home_flag: m.home.crest,
       away_name: m.away.name, away_flag: m.away.crest, info: dt, stage,
-      kickoff: m.utcDate           // ISO → auto-lock at this time
+      kickoff: m.utcDate,          // ISO → auto-lock at this time
+      fd_id: m.id                  // football-data id → enables live score once it starts
     });
     flash($('fdMsg'), 'Applied: ' + m.home.name + ' vs ' + m.away.name, false);
   } catch (e) { flash($('fdMsg'), e.message, true); }
@@ -616,4 +720,4 @@ setInterval(() => { if (match) renderMatch(); }, 20000);
 
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
-  loadFdMatches, applyFdMatch, signInGoogle, signOutUser, toggleAuthMode });
+  loadFdMatches, applyFdMatch, signInGoogle, signOutUser, toggleAuthMode, publishResult, clearResult });
