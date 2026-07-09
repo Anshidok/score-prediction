@@ -83,6 +83,27 @@ input.name:focus,input.txt:focus{border-color:var(--brand)}
   background:#f3f0ff;border:1px solid #e4dcff;border-radius:12px;padding:12px 14px}
 .mypred .mp-label{font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--brand)}
 .mypred .mp-score{font-size:14px;font-weight:800;color:var(--ink)}
+
+/* locked name after submit: "Playing as: <name>" */
+.playing-as{display:flex;align-items:center;gap:10px;margin-bottom:16px;
+  background:#f0f2f7;border:1px solid var(--line);border-radius:10px;padding:11px 14px}
+.playing-as .pa-label{font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--muted)}
+.playing-as .pa-name{font-size:14px;font-weight:800;color:var(--ink)}
+
+/* header user chip + sign out */
+.user-chip{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;color:var(--ink)}
+.user-chip .signout{cursor:pointer;color:var(--muted);font-weight:600;font-size:13px;text-decoration:none}
+.user-chip .signout:hover{color:var(--loss)}
+
+/* sign-in gate */
+.auth-gate{max-width:1080px;margin:60px auto;padding:0 20px;display:flex;justify-content:center}
+.auth-card{max-width:420px;width:100%;text-align:center;padding:40px 30px}
+.auth-card .auth-emoji{font-size:44px;margin-bottom:12px}
+.auth-card h2{font-size:20px;font-weight:800;margin-bottom:8px}
+.auth-card .sub{font-size:14px;color:var(--muted);margin-bottom:24px}
+.google-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;width:100%}
+.google-btn .g-mark{display:inline-flex;align-items:center;justify-content:center;
+  width:20px;height:20px;border-radius:50%;background:#fff;color:#4285f4;font-weight:800;font-size:13px}
 .row-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px}
 .import-box{background:#f7f8fb;border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:4px}
 .import-box select{width:100%;height:42px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:14px;outline:none;background:#fff}
@@ -113,9 +134,10 @@ input.name:focus,input.txt:focus{border-color:var(--brand)}
 @media(max-width:600px){
   header{flex-wrap:wrap;padding:12px 16px;gap:8px 12px}
   .logo{order:1;flex:1 1 auto;font-size:15px}
-  .live{order:2}
-  nav{order:3;flex-basis:100%;justify-content:center;gap:20px}
+  .live,.user-chip{order:2}
+  #mainNav{order:3;flex-basis:100%;justify-content:center;gap:20px}
   nav a{padding-bottom:6px}
+  .auth-gate{margin:32px auto}
 
   .wrap{margin:16px auto;padding:0 14px;gap:16px}
   .card{padding:18px}

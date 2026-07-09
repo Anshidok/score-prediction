@@ -15,17 +15,35 @@
     <div class="top"></div>
     <header>
       <div class="logo"><span>ITCS</span> <span>Prediction Game 2026</span></div>
-      <nav>
+      <nav id="mainNav" class="hidden">
         <a id="nav-predict" class="active" onclick="show('predict')"
           >Predictions</a
         >
         <a id="nav-admin" onclick="show('admin')">Admin</a>
       </nav>
-      <span class="live" style="align-self: center">● LIVE</span>
+      <span class="user-chip hidden" id="userChip">
+        <span id="userChipName">Signed in</span>
+        <a class="signout" onclick="signOutUser()">Sign out</a>
+      </span>
     </header>
 
+    <!-- SIGN-IN GATE: shown until the user authenticates -->
+    <div id="authGate" class="auth-gate hidden">
+      <div class="card auth-card">
+        <div class="auth-emoji">⚽</div>
+        <h2>Sign in to predict</h2>
+        <p class="sub">
+          Sign in with Google to make your prediction. One prediction per account.
+        </p>
+        <button class="btn google-btn" onclick="signInGoogle()">
+          <span class="g-mark">G</span> Sign in with Google
+        </button>
+        <div id="authMsg" class="msg hidden"></div>
+      </div>
+    </div>
+
     <!-- PREDICT VIEW -->
-    <div id="view-predict">
+    <div id="view-predict" class="hidden">
       <div class="wrap">
         <div>
           <div class="card" style="border-left: 4px solid var(--brand)">
@@ -53,7 +71,7 @@
 
           <div class="card" style="margin-top: 20px">
             <h2 class="section">🎯 Score Prediction</h2>
-            <div style="margin-bottom: 16px">
+            <div id="nameField" style="margin-bottom: 16px">
               <label class="f">YOUR NAME</label>
               <input
                 class="name"
@@ -63,6 +81,11 @@
                 maxlength="40"
               />
               <div id="nameMsg" class="msg hidden"></div>
+            </div>
+            <!-- shown after first submit: name is locked, only scores editable -->
+            <div id="playingAs" class="playing-as hidden">
+              <span class="pa-label">PLAYING AS</span>
+              <span class="pa-name" id="playingAsName">—</span>
             </div>
             <div class="score-row">
               <div class="score-col">

@@ -1,6 +1,6 @@
 // ProScore — Firestore + realtime. Loaded as an ES module.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, signInAnonymously, onAuthStateChanged }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   getFirestore, doc, setDoc, getDoc, onSnapshot, collection
@@ -17,7 +17,7 @@ const NAMES = collection(db, 'names');   // public registry of taken names (read
 
 let uid = null;
 let match = null;                 // config/match data
-let revealed = localStorage.getItem('ps_submitted') === '1';
+let revealed = false;             // consensus unlocked once this account has predicted
 let predsUnsub = null;            // predictions listener (attached after submit)
 let takenNames = [];              // [{ name, uid }] — kept live for duplicate checks
 let myPred = null;                // this user's own prediction (private to them)
@@ -32,35 +32,84 @@ function flagMarkup(flag) {
   return flag || '🏳️';
 }
 
-// ── auth: anonymous sign-in gives each browser a stable uid ──
-signInAnonymously(auth).catch(e => console.error('auth', e));
+// ── public data: match + name registry (no auth required, attached once) ──
+onSnapshot(MATCH_REF, snap => {
+  match = snap.data() || {};
+  renderMatch();
+  matchLoaded = true; maybeReveal();
+});
+onSnapshot(NAMES, snap => {
+  takenNames = snap.docs.map(d => ({ name: d.data().name, uid: d.id }));
+  validateName();
+}, e => console.error('names', e));
+
+// ── auth: real Google sign-in → identity is a stable account (one per person) ──
+async function signInGoogle() {
+  try {
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  } catch (e) {
+    const el = $('authMsg');
+    const txt = e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request'
+      ? 'Sign-in cancelled.' : 'Sign-in failed: ' + e.message;
+    if (el) flash(el, txt, true);
+  }
+}
+async function signOutUser() {
+  try { await signOut(auth); } catch (e) { console.error('signout', e); }
+}
+
 onAuthStateChanged(auth, async user => {
-  if (!user) return;
+  if (!user) {
+    // signed out → drop per-account state and return to the sign-in gate
+    uid = null; myPred = null; revealed = false;
+    if (predsUnsub) { predsUnsub(); predsUnsub = null; }
+    resetForm();
+    renderAuth(null);
+    renderGate(); renderMine(); renderNameLock(); renderMatch();
+    authResolved = true; maybeReveal();
+    return;
+  }
   uid = user.uid;
-  // live match banner (public read)
-  onSnapshot(MATCH_REF, snap => { match = snap.data() || {}; renderMatch(); revealPage(); });
-  // live registry of taken names (public read) → instant duplicate feedback
-  onSnapshot(NAMES, snap => {
-    takenNames = snap.docs.map(d => ({ name: d.data().name, uid: d.id }));
-    validateName();
-  }, e => console.error('names', e));
-  // if this browser already submitted, restore & unlock consensus
+  renderAuth(user);
+  // restore THIS account's prediction (stable across devices/incognito)
   try {
     const mine = await getDoc(doc(db, 'predictions', uid));
-    if (mine.exists()) {
-      myPred = mine.data();
-      revealed = true;
-      localStorage.setItem('ps_submitted', '1');
-      prefillForm();          // seed the form with the current pick so re-predicting edits it
-    }
-  } catch {}
+    myPred = mine.exists() ? mine.data() : null;
+    revealed = !!myPred;
+    if (myPred) prefillForm();     // seed the form so re-predicting edits it
+  } catch { myPred = null; revealed = false; }
   if (revealed) subscribeConsensus();
-  renderGate();
-  renderMine();
+  renderGate(); renderMine(); renderNameLock(); renderMatch();
+  authResolved = true; maybeReveal();
 });
 
-// ── reveal the page once match details + flag images are ready ──
+// clear the form back to defaults (used when switching accounts / signing out)
+function resetForm() {
+  $('userName').value = '';
+  $('homeScore').value = '0';
+  $('awayScore').value = '0';
+  const nm = $('nameMsg'); if (nm) nm.classList.add('hidden');
+}
+
+// toggle the sign-in gate vs the app, and the header user chip
+function renderAuth(user) {
+  const on = !!user;
+  $('authGate').classList.toggle('hidden', on);
+  $('mainNav').classList.toggle('hidden', !on);
+  $('userChip').classList.toggle('hidden', !on);
+  if (on) {
+    $('userChipName').textContent = user.displayName || user.email || 'Signed in';
+    $('view-predict').classList.remove('hidden');
+  } else {
+    $('view-predict').classList.add('hidden');
+    $('view-admin').classList.add('hidden');
+  }
+}
+
+// ── reveal the page once match details + flag images are ready AND auth resolved ──
 let pageShown = false;
+let matchLoaded = false, authResolved = false;
+function maybeReveal() { if (matchLoaded && authResolved) revealPage(); }
 function whenFlagsReady() {
   const imgs = ['homeFlag', 'awayFlag']
     .flatMap(id => Array.from($(id).querySelectorAll('img')));
@@ -75,8 +124,8 @@ async function revealPage() {
   await whenFlagsReady();
   $('loader').classList.add('hidden');
 }
-// safety net: never trap the user on the loader if Firestore is unreachable
-setTimeout(revealPage, 8000);
+// safety net: never trap the user on the loader if Firestore/auth is unreachable
+setTimeout(() => { if (!authResolved) renderAuth(null); revealPage(); }, 8000);
 
 // ── lock state: manual lock OR kickoff time reached ──
 function kickoffMs() {
@@ -122,6 +171,7 @@ function renderMatch() {
   document.querySelectorAll('.stepper button').forEach(b => b.disabled = locked);
   validateName();   // keep duplicate-name disable in sync after the button reset
   renderMine();     // refresh the private "your prediction" line (team names may have loaded)
+  renderNameLock(); // keep the name field vs "Playing as" label in sync
 
   // the individual predictions list stays hidden until the match kicks off
   const predsCard = $('predsCard');
@@ -135,6 +185,20 @@ function prefillForm() {
   if (!$('userName').value.trim()) $('userName').value = myPred.name || '';
   $('homeScore').value = myPred.h;
   $('awayScore').value = myPred.a;
+}
+
+// once a pick exists, the name is fixed: hide the input, show "Playing as: <name>"
+function renderNameLock() {
+  const field = $('nameField'), pa = $('playingAs');
+  if (!field || !pa) return;
+  if (myPred) {
+    field.classList.add('hidden');
+    $('playingAsName').textContent = myPred.name;
+    pa.classList.remove('hidden');
+  } else {
+    field.classList.remove('hidden');
+    pa.classList.add('hidden');
+  }
 }
 
 // private display of the user's own current pick (derived from their own uid doc)
@@ -181,6 +245,7 @@ function validateName() {
 async function submitPred() {
   const name = $('userName').value.trim();
   const msg = $('msg');
+  if (!uid) return flash(msg, 'Please sign in first.', true);
   if (!name) return flash(msg, 'Enter your name first.', true);
   if (isLocked()) return flash(msg, 'Predictions are locked.', true);
   if (nameTaken(name)) {
@@ -197,10 +262,10 @@ async function submitPred() {
     const isUpdate = !!myPred;
     myPred = { name, h, a, ts };   // same uid → this overwrites, never duplicates
     revealed = true;
-    localStorage.setItem('ps_submitted', '1');
     subscribeConsensus();
     renderGate();
     renderMine();
+    renderNameLock();              // lock the name into "Playing as: <name>"
     $('submitBtn').textContent = 'Update Prediction';
     flash(msg, `${isUpdate ? 'Updated' : 'Saved'}: ${match.home_name} ${h} - ${a} ${match.away_name}`, false);
     celebrate();
@@ -479,4 +544,4 @@ setInterval(() => { if (match) renderMatch(); }, 20000);
 
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
-  loadFdMatches, applyFdMatch });
+  loadFdMatches, applyFdMatch, signInGoogle, signOutUser });
