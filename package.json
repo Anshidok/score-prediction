@@ -1,0 +1,13 @@
+{
+  "name": "proscore-prediction",
+  "version": "2.0.0",
+  "description": "Single-match World Cup score prediction — Firebase + Vercel",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.4.0"
+  }
+}

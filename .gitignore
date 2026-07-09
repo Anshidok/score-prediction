@@ -1,0 +1,8 @@
+node_modules/
+.vercel
+*.log
+.DS_Store
+# never commit secrets
+serviceAccount*.json
+.env
+.env*.local

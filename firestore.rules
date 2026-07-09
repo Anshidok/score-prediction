@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // match config: anyone may read; only the server (Admin SDK) writes.
+    // Admin SDK bypasses these rules, so client writes are always denied here.
+    match /config/match {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    function matchUnlocked() {
+      // missing match doc counts as unlocked so first writes aren't blocked
+      return !exists(/databases/$(database)/documents/config/match)
+        || get(/databases/$(database)/documents/config/match).data.locked != true;
+    }
+    function iHavePredicted() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/predictions/$(request.auth.uid));
+    }
+    function validPrediction() {
+      let d = request.resource.data;
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 40
+        && d.h is int && d.h >= 0 && d.h <= 30
+        && d.a is int && d.a >= 0 && d.a <= 30;
+    }
+
+    match /predictions/{userId} {
+      // REVEAL GATE: you may read predictions only after you have submitted yours
+      allow read: if iHavePredicted();
+
+      // you may write only your own prediction, while the match is unlocked
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && matchUnlocked()
+        && validPrediction();
+
+      // clearing predictions is done server-side (Admin SDK); clients cannot delete
+      allow delete: if false;
+    }
+  }
+}
