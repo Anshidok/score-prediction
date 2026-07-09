@@ -9,7 +9,7 @@ const DEFAULT_MATCH = {
   home_name: 'Brazil', home_flag: 'br',
   away_name: 'France', away_flag: 'fr',
   info: 'Dec 14, 2024 • 20:00 GMT', stage: 'Group Stage • Match 42',
-  locked: false
+  locked: false, requireLogin: false
 };
 
 function admin() {
@@ -65,6 +65,11 @@ export default async function handler(req, res) {
     }
     if (action === 'lock') {
       await matchRef.set({ locked: !!body.locked }, { merge: true });
+      return res.json({ ok: true });
+    }
+    if (action === 'authmode') {
+      // true → require Google login; false → open (anonymous) predictions
+      await matchRef.set({ requireLogin: !!body.requireLogin }, { merge: true });
       return res.json({ ok: true });
     }
     if (action === 'clear') {

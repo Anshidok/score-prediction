@@ -27,6 +27,15 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
+    function loginRequired() {
+      // admin flag on config/match: true → Google login enforced; else open mode
+      let ref = /databases/$(database)/documents/config/match;
+      return exists(ref) && get(ref).data.get('requireLogin', false) == true;
+    }
+    function authOk() {
+      // open mode: any signed-in user; Google mode: real account only
+      return request.auth != null && (!loginRequired() || realAccount());
+    }
     function validPrediction() {
       let d = request.resource.data;
       return d.name is string && d.name.size() > 0 && d.name.size() <= 40
@@ -43,7 +52,7 @@ service cloud.firestore {
     // before the prediction reveal gate opens); you may only claim your own.
     match /names/{userId} {
       allow read: if true;
-      allow create, update: if realAccount()
+      allow create, update: if authOk()
         && request.auth.uid == userId
         && matchUnlocked()
         && validName();
@@ -56,7 +65,7 @@ service cloud.firestore {
       allow read: if iHavePredicted();
 
       // you may write only your own prediction, while the match is unlocked
-      allow create, update: if realAccount()
+      allow create, update: if authOk()
         && request.auth.uid == userId
         && matchUnlocked()
         && validPrediction();

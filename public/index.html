@@ -259,12 +259,22 @@
               <label class="f">STAGE</label>
               <input id="aStage" placeholder="Group Stage • Match 42" />
             </div>
+            <div>
+              <label class="f">KICKOFF (AUTO-LOCK)</label>
+              <input id="aKick" type="datetime-local" />
+            </div>
+          </div>
+          <div class="f sub" style="margin-top: 6px">
+            Predictions auto-lock at kickoff. Leave blank to lock manually only.
           </div>
           <hr />
           <div class="row-actions">
             <button class="btn" onclick="saveMatch()">Save Match</button>
             <button class="btn ghost" onclick="toggleLock()" id="lockBtn">
               Lock Predictions
+            </button>
+            <button class="btn ghost" onclick="toggleAuthMode()" id="authModeBtn">
+              Login: Open (OFF)
             </button>
             <span class="link" onclick="clearVotes()">Clear predictions</span>
             <span class="link" style="color: var(--loss)" onclick="resetAll()"

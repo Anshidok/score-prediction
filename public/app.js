@@ -1,6 +1,6 @@
 // ProScore — Firestore + realtime. Loaded as an ES module.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   getFirestore, doc, setDoc, getDoc, onSnapshot, collection
@@ -36,6 +36,7 @@ function flagMarkup(flag) {
 onSnapshot(MATCH_REF, snap => {
   match = snap.data() || {};
   renderMatch();
+  handleAuth();        // auth mode (requireLogin) lives on the match doc
   matchLoaded = true; maybeReveal();
 });
 onSnapshot(NAMES, snap => {
@@ -58,30 +59,61 @@ async function signOutUser() {
   try { await signOut(auth); } catch (e) { console.error('signout', e); }
 }
 
-onAuthStateChanged(auth, async user => {
-  if (!user) {
-    // signed out → drop per-account state and return to the sign-in gate
-    uid = null; myPred = null; revealed = false;
+onAuthStateChanged(auth, () => handleAuth());
+
+// admin flag on config/match: true → require Google login; false/absent → old
+// open mode (anonymous sign-in, no gate).
+function loginRequired() { return match?.requireLogin === true; }
+// authorized to use the app: in Google mode you must be a real (non-anonymous)
+// account; in open mode any auth (including anonymous) is fine.
+function isAuthorized(user) {
+  if (!user) return false;
+  return loginRequired() ? !user.isAnonymous : true;
+}
+
+let anonSigningIn = false;   // guard against duplicate anonymous sign-in calls
+let loadedForUid = null;     // which uid's prediction we've already loaded
+
+// single source of truth for auth: reconciles the current user with the mode.
+async function handleAuth() {
+  const user = auth.currentUser;
+
+  // OPEN mode with nobody signed in → get an anonymous session automatically
+  if (!loginRequired() && !user && !anonSigningIn) {
+    anonSigningIn = true;
+    try { await signInAnonymously(auth); }
+    catch (e) { console.error('anon', e); }
+    finally { anonSigningIn = false; }
+    return;   // onAuthStateChanged will re-run handleAuth with the new user
+  }
+
+  const authed = isAuthorized(user);
+  renderAuth(user, authed);
+
+  if (!authed) {
+    // signed out / anonymous-in-Google-mode → reset state, show the sign-in gate
+    uid = null; myPred = null; revealed = false; loadedForUid = null;
     if (predsUnsub) { predsUnsub(); predsUnsub = null; }
     resetForm();
-    renderAuth(null);
     renderGate(); renderMine(); renderNameLock(); renderMatch();
     authResolved = true; maybeReveal();
     return;
   }
+
   uid = user.uid;
-  renderAuth(user);
-  // restore THIS account's prediction (stable across devices/incognito)
-  try {
-    const mine = await getDoc(doc(db, 'predictions', uid));
-    myPred = mine.exists() ? mine.data() : null;
-    revealed = !!myPred;
-    if (myPred) prefillForm();     // seed the form so re-predicting edits it
-  } catch { myPred = null; revealed = false; }
-  if (revealed) subscribeConsensus();
+  if (loadedForUid !== uid) {          // load this account's prediction once
+    loadedForUid = uid;
+    try {
+      const mine = await getDoc(doc(db, 'predictions', uid));
+      myPred = mine.exists() ? mine.data() : null;
+      revealed = !!myPred;
+      if (myPred) prefillForm();        // seed the form so re-predicting edits it
+    } catch { myPred = null; revealed = false; }
+    if (revealed) subscribeConsensus();
+  }
   renderGate(); renderMine(); renderNameLock(); renderMatch();
   authResolved = true; maybeReveal();
-});
+}
 
 // clear the form back to defaults (used when switching accounts / signing out)
 function resetForm() {
@@ -92,13 +124,16 @@ function resetForm() {
 }
 
 // toggle the sign-in gate vs the app, and the header user chip
-function renderAuth(user) {
-  const on = !!user;
-  $('authGate').classList.toggle('hidden', on);
-  $('mainNav').classList.toggle('hidden', !on);
-  $('userChip').classList.toggle('hidden', !on);
-  if (on) {
-    $('userChipName').textContent = user.displayName || user.email || 'Signed in';
+function renderAuth(user, authed = isAuthorized(user)) {
+  const requireLogin = loginRequired();
+  // the gate only appears in Google mode when the user isn't authorized
+  $('authGate').classList.toggle('hidden', authed || !requireLogin);
+  $('mainNav').classList.toggle('hidden', !authed);
+  // the header chip + sign-out only make sense for a real (named) account
+  const showChip = authed && requireLogin && user && !user.isAnonymous;
+  $('userChip').classList.toggle('hidden', !showChip);
+  if (showChip) $('userChipName').textContent = user.displayName || user.email || 'Signed in';
+  if (authed) {
     $('view-predict').classList.remove('hidden');
   } else {
     $('view-predict').classList.add('hidden');
@@ -143,6 +178,11 @@ function isLocked() {
 function matchStarted() {
   const ms = kickoffMs();
   return ms != null && Date.now() >= ms;
+}
+// ms → 'YYYY-MM-DDTHH:mm' in LOCAL time, for a datetime-local input
+function msToLocalInput(ms) {
+  const d = new Date(ms), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 // ── predictions view ──
@@ -462,16 +502,32 @@ function fillAdmin() {
     $('aAway').value = match.away_name;
     $('aInfo').value = match.info || '';
     $('aStage').value = match.stage || '';
+    $('aKick').value = match.kickoff ? msToLocalInput(kickoffMs()) : '';
     $('lockBtn').textContent = match.locked ? 'Unlock Predictions' : 'Lock Predictions';
+    const req = match.requireLogin === true;
+    $('authModeBtn').textContent = req ? 'Login: Google (ON)' : 'Login: Open (OFF)';
+    $('authModeBtn').classList.toggle('ghost', !req);
   }
+}
+async function toggleAuthMode() {
+  const next = !(match?.requireLogin === true);
+  const verb = next ? 'require Google sign-in' : 'allow open (anonymous) predictions';
+  if (!confirm(`Switch login mode to: ${verb}?`)) return;
+  try {
+    await adminPost('authmode', { requireLogin: next });
+    flash($('adminMsg'), 'Login mode updated.', false);
+  } catch (e) { flash($('adminMsg'), e.message, true); }
 }
 async function saveMatch() {
   const home = teamByName($('aHome').value), away = teamByName($('aAway').value);
   if (home.name === away.name) return flash($('adminMsg'), 'Home and away must differ.', true);
+  const kick = $('aKick').value;   // '' or local 'YYYY-MM-DDTHH:mm'
   try {
     await adminPost('setMatch', {
       home_name: home.name, home_flag: home.flag, away_name: away.name, away_flag: away.flag,
-      info: $('aInfo').value, stage: $('aStage').value
+      info: $('aInfo').value, stage: $('aStage').value,
+      // local time → ISO (UTC) so the server stores a real kickoff; '' clears it
+      kickoff: kick ? new Date(kick).toISOString() : null
     });
     flash($('adminMsg'), 'Match saved.', false);
   } catch (e) { flash($('adminMsg'), e.message, true); }
@@ -544,4 +600,4 @@ setInterval(() => { if (match) renderMatch(); }, 20000);
 
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
-  loadFdMatches, applyFdMatch, signInGoogle, signOutUser });
+  loadFdMatches, applyFdMatch, signInGoogle, signOutUser, toggleAuthMode });
