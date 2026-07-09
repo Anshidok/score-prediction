@@ -29,6 +29,23 @@ service cloud.firestore {
         && d.a is int && d.a >= 0 && d.a <= 30;
     }
 
+    function validName() {
+      let d = request.resource.data;
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 40;
+    }
+
+    // public name registry: anyone may read (so duplicates can be detected
+    // before the prediction reveal gate opens); you may only claim your own.
+    match /names/{userId} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && matchUnlocked()
+        && validName();
+      // cleared server-side (Admin SDK) alongside predictions
+      allow delete: if false;
+    }
+
     match /predictions/{userId} {
       // REVEAL GATE: you may read predictions only after you have submitted yours
       allow read: if iHavePredicted();

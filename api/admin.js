@@ -1,7 +1,7 @@
 // Vercel serverless function: admin actions via Firebase Admin SDK.
 // Protected by ADMIN_KEY. Admin SDK bypasses Firestore security rules.
 // POST /api/admin  body: { action, adminKey, ...payload }
-//   action: setMatch | lock | clear | reset
+//   action: setMatch | lock | clear | reset | list
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -20,11 +20,17 @@ function admin() {
   return getFirestore();
 }
 
-async function clearPredictions(db) {
-  const snap = await db.collection('predictions').get();
+async function clearCollection(db, name) {
+  const snap = await db.collection(name).get();
   const batch = db.batch();
   snap.docs.forEach(d => batch.delete(d.ref));
   await batch.commit();
+}
+
+// wipe predictions AND the name registry so freed names become available again
+async function clearPredictions(db) {
+  await clearCollection(db, 'predictions');
+  await clearCollection(db, 'names');
 }
 
 export default async function handler(req, res) {
@@ -51,6 +57,11 @@ export default async function handler(req, res) {
       else data.kickoff = null;
       await matchRef.set(data, { merge: true });
       return res.json({ ok: true });
+    }
+    if (action === 'list') {
+      const snap = await db.collection('predictions').get();
+      const preds = snap.docs.map(d => d.data());
+      return res.json({ preds });
     }
     if (action === 'lock') {
       await matchRef.set({ locked: !!body.locked }, { merge: true });

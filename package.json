@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
+    "static": "node serve.js",
     "deploy": "vercel --prod"
   },
   "dependencies": {

@@ -13,11 +13,14 @@ const db = getFirestore(app);
 
 const MATCH_REF = doc(db, 'config', 'match');
 const PREDS = collection(db, 'predictions');
+const NAMES = collection(db, 'names');   // public registry of taken names (read by all)
 
 let uid = null;
 let match = null;                 // config/match data
 let revealed = localStorage.getItem('ps_submitted') === '1';
 let predsUnsub = null;            // predictions listener (attached after submit)
+let takenNames = [];              // [{ name, uid }] — kept live for duplicate checks
+let myPred = null;                // this user's own prediction (private to them)
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -36,13 +39,24 @@ onAuthStateChanged(auth, async user => {
   uid = user.uid;
   // live match banner (public read)
   onSnapshot(MATCH_REF, snap => { match = snap.data() || {}; renderMatch(); revealPage(); });
-  // if this browser already submitted, unlock consensus
+  // live registry of taken names (public read) → instant duplicate feedback
+  onSnapshot(NAMES, snap => {
+    takenNames = snap.docs.map(d => ({ name: d.data().name, uid: d.id }));
+    validateName();
+  }, e => console.error('names', e));
+  // if this browser already submitted, restore & unlock consensus
   try {
     const mine = await getDoc(doc(db, 'predictions', uid));
-    if (mine.exists()) { revealed = true; localStorage.setItem('ps_submitted', '1'); }
+    if (mine.exists()) {
+      myPred = mine.data();
+      revealed = true;
+      localStorage.setItem('ps_submitted', '1');
+      prefillForm();          // seed the form with the current pick so re-predicting edits it
+    }
   } catch {}
   if (revealed) subscribeConsensus();
   renderGate();
+  renderMine();
 });
 
 // ── reveal the page once match details + flag images are ready ──
@@ -74,6 +88,10 @@ function kickoffMs() {
 }
 function isLocked() {
   if (match?.locked === true) return true;
+  return matchStarted();
+}
+// true once kickoff time has been reached (manual locks don't count as "started")
+function matchStarted() {
   const ms = kickoffMs();
   return ms != null && Date.now() >= ms;
 }
@@ -95,12 +113,41 @@ function renderMatch() {
   $('lossLbl').textContent = away.name + ' Win';
 
   const locked = isLocked();
-  const started = kickoffMs() != null && Date.now() >= kickoffMs();
+  const started = matchStarted();
   $('lockBadge').classList.toggle('hidden', !locked);
   $('lockBadge').textContent = started ? '🔒 LOCKED — MATCH STARTED' : '🔒 PREDICTIONS LOCKED';
   $('submitBtn').disabled = locked;
-  $('submitBtn').textContent = locked ? 'Predictions Locked' : 'Submit Prediction';
+  $('submitBtn').textContent = locked ? 'Predictions Locked'
+    : (myPred ? 'Update Prediction' : 'Submit Prediction');
   document.querySelectorAll('.stepper button').forEach(b => b.disabled = locked);
+  validateName();   // keep duplicate-name disable in sync after the button reset
+  renderMine();     // refresh the private "your prediction" line (team names may have loaded)
+
+  // the individual predictions list stays hidden until the match kicks off
+  const predsCard = $('predsCard');
+  if (predsCard) predsCard.classList.toggle('hidden', !(revealed && started));
+}
+
+// prefill the form with the user's saved pick — called once, never on the tick,
+// so it can't clobber edits the user is making
+function prefillForm() {
+  if (!myPred) return;
+  if (!$('userName').value.trim()) $('userName').value = myPred.name || '';
+  $('homeScore').value = myPred.h;
+  $('awayScore').value = myPred.a;
+}
+
+// private display of the user's own current pick (derived from their own uid doc)
+function renderMine() {
+  const box = $('myPredBox');
+  if (!box) return;
+  if (myPred) {
+    const home = match?.home_name || 'Home', away = match?.away_name || 'Away';
+    $('myPredScore').textContent = `${home} ${myPred.h} - ${myPred.a} ${away}`;
+    box.classList.remove('hidden');
+  } else {
+    box.classList.add('hidden');
+  }
 }
 
 function bump(side, d) {
@@ -108,20 +155,54 @@ function bump(side, d) {
   el.value = Math.max(0, Math.min(30, (parseInt(el.value) || 0) + d));
 }
 
+// name is taken if another user (different uid) already registered the exact
+// same name — comparison is case-sensitive ("John" ≠ "john").
+function nameTaken(name) {
+  return takenNames.some(t => t.uid !== uid && t.name === name);
+}
+
+// live validation as the user types / on submit; toggles the inline hint + button
+function validateName() {
+  const el = $('nameMsg');
+  if (!el) return true;
+  const name = $('userName').value.trim();
+  const btn = $('submitBtn');
+  if (name && nameTaken(name)) {
+    flash(el, `“${name}” is already taken — pick a different name.`, true);
+    el.classList.remove('hidden');
+    if (btn && !isLocked()) btn.disabled = true;
+    return false;
+  }
+  el.classList.add('hidden');
+  if (btn && !isLocked()) btn.disabled = false;
+  return true;
+}
+
 async function submitPred() {
   const name = $('userName').value.trim();
   const msg = $('msg');
   if (!name) return flash(msg, 'Enter your name first.', true);
   if (isLocked()) return flash(msg, 'Predictions are locked.', true);
+  if (nameTaken(name)) {
+    validateName();
+    return flash(msg, `“${name}” is already taken — pick a different name.`, true);
+  }
   const h = parseInt($('homeScore').value);
   const a = parseInt($('awayScore').value);
   try {
-    await setDoc(doc(db, 'predictions', uid), { name, h, a, ts: Date.now() });
+    // reserve the name first so the registry stays in sync with the prediction
+    await setDoc(doc(db, 'names', uid), { name, ts: Date.now() });
+    const ts = Date.now();
+    await setDoc(doc(db, 'predictions', uid), { name, h, a, ts });
+    const isUpdate = !!myPred;
+    myPred = { name, h, a, ts };   // same uid → this overwrites, never duplicates
     revealed = true;
     localStorage.setItem('ps_submitted', '1');
     subscribeConsensus();
     renderGate();
-    flash(msg, `Saved: ${match.home_name} ${h} - ${a} ${match.away_name}`, false);
+    renderMine();
+    $('submitBtn').textContent = 'Update Prediction';
+    flash(msg, `${isUpdate ? 'Updated' : 'Saved'}: ${match.home_name} ${h} - ${a} ${match.away_name}`, false);
     celebrate();
   } catch (e) {
     flash(msg, 'Save failed: ' + e.message, true);
@@ -217,10 +298,14 @@ function renderConsensus(preds) {
   set('win', pc(w)); set('loss', pc(l)); set('draw', pc(d));
   $('voteCount').textContent = n + ' prediction' + (n === 1 ? '' : 's');
 
+  $('lbList').innerHTML = predListHTML(preds, 'No predictions yet. Be first!');
+}
+
+// build the individual-predictions markup, shared by the public + admin lists
+function predListHTML(preds, emptyMsg) {
+  if (!preds.length) return `<div class="empty">${esc(emptyMsg || 'No predictions yet.')}</div>`;
   const home = match?.home_name || 'HOME', away = match?.away_name || 'AWAY';
-  const list = $('lbList');
-  if (!n) { list.innerHTML = '<div class="empty">No predictions yet. Be first!</div>'; return; }
-  list.innerHTML = preds.slice().sort((a, b) => b.ts - a.ts).map(p => {
+  return preds.slice().sort((a, b) => b.ts - a.ts).map(p => {
     const res = p.h > p.a ? home.slice(0,3).toUpperCase() + ' win'
               : p.h < p.a ? away.slice(0,3).toUpperCase() + ' win' : 'Draw';
     const ini = String(p.name).trim().slice(0, 2).toUpperCase();
@@ -232,12 +317,54 @@ function renderConsensus(preds) {
 function set(k, v) { $(k + 'Pct').textContent = v + '%'; $(k + 'Bar').style.width = v + '%'; }
 
 // ── view switch ──
+let adminUnlocked = false;
 function show(v) {
   $('view-predict').classList.toggle('hidden', v !== 'predict');
   $('view-admin').classList.toggle('hidden', v !== 'admin');
   $('nav-predict').classList.toggle('active', v === 'predict');
   $('nav-admin').classList.toggle('active', v === 'admin');
-  if (v === 'admin') fillAdmin();
+  if (v === 'admin') renderAdminGate(); else stopAdminPreds();
+}
+
+// show either the key gate or the full admin body, depending on unlock state
+function renderAdminGate() {
+  $('adminGate').classList.toggle('hidden', adminUnlocked);
+  $('adminBody').classList.toggle('hidden', !adminUnlocked);
+  if (adminUnlocked) { fillAdmin(); startAdminPreds(); } else stopAdminPreds();
+}
+
+// verify the entered key server-side (a successful 'list' call means it's valid)
+async function unlockAdmin() {
+  const key = $('adminKey').value.trim();
+  if (!key) return flash($('gateMsg'), 'Enter the admin key.', true);
+  flash($('gateMsg'), 'Checking…', false);
+  try {
+    await adminPost('list', {});
+    adminUnlocked = true;
+    $('gateMsg').classList.add('hidden');
+    renderAdminGate();
+  } catch (e) {
+    flash($('gateMsg'), e.message, true);
+  }
+}
+
+// ── admin predictions list: fetched server-side (bypasses the reveal gate via
+// the Admin SDK) so the admin can watch entries before kickoff ──
+let adminPredsTimer = null;
+async function loadAdminPreds() {
+  try {
+    const { preds } = await adminPost('list', {});
+    $('adminLbList').innerHTML = predListHTML(preds || [], 'No predictions yet.');
+  } catch (e) {
+    $('adminLbList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+function startAdminPreds() {
+  loadAdminPreds();
+  if (!adminPredsTimer) adminPredsTimer = setInterval(loadAdminPreds, 10000);
+}
+function stopAdminPreds() {
+  if (adminPredsTimer) { clearInterval(adminPredsTimer); adminPredsTimer = null; }
 }
 
 // ── admin (writes go through /api/admin serverless + ADMIN_KEY) ──
@@ -344,9 +471,12 @@ async function applyFdMatch() {
   } catch (e) { flash($('fdMsg'), e.message, true); }
 }
 
+// validate the name field live as the user types
+$('userName').addEventListener('input', validateName);
+
 // tick every 20s so an open page auto-locks when kickoff passes (no refresh needed)
 setInterval(() => { if (match) renderMatch(); }, 20000);
 
 // expose handlers to inline onclick attributes
-Object.assign(window, { show, bump, submitPred, saveMatch, toggleLock, clearVotes, resetAll,
+Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
   loadFdMatches, applyFdMatch });

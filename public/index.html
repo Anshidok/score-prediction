@@ -60,7 +60,9 @@
                 id="userName"
                 placeholder="Enter your name"
                 autocomplete="off"
+                maxlength="40"
               />
+              <div id="nameMsg" class="msg hidden"></div>
             </div>
             <div class="score-row">
               <div class="score-col">
@@ -91,6 +93,11 @@
               Submit Prediction
             </button>
             <div id="msg" class="msg hidden"></div>
+            <!-- private: only this user sees their own current pick -->
+            <div id="myPredBox" class="mypred hidden">
+              <span class="mp-label">YOUR PREDICTION</span>
+              <span class="mp-score" id="myPredScore">0 - 0</span>
+            </div>
           </div>
         </div>
 
@@ -147,7 +154,8 @@
               <div class="count" id="voteCount">0 predictions</div>
             </div>
 
-            <div class="card" style="margin-top: 20px">
+            <!-- individual predictions: only revealed once the match starts -->
+            <div class="card hidden" style="margin-top: 20px" id="predsCard">
               <h4>PREDICTIONS</h4>
               <div id="lbList"></div>
             </div>
@@ -159,17 +167,30 @@
     <!-- ADMIN VIEW -->
     <div id="view-admin" class="hidden">
       <div class="wrap" style="grid-template-columns: 1fr">
-        <div class="card">
-          <h2 class="section">⚙️ Match Setup</h2>
-          <div style="margin-bottom: 16px; max-width: 280px">
+        <!-- key gate: shown until the admin key is verified -->
+        <div class="card" id="adminGate" style="max-width: 360px">
+          <h2 class="section">🔑 Admin Access</h2>
+          <div style="margin-bottom: 16px">
             <label class="f">ADMIN KEY</label>
             <input
               class="txt"
               id="adminKey"
               type="password"
               placeholder="admin key"
+              autocomplete="off"
+              onkeydown="if(event.key==='Enter')unlockAdmin()"
             />
           </div>
+          <button class="btn" style="width: 100%" onclick="unlockAdmin()">
+            Unlock
+          </button>
+          <div id="gateMsg" class="msg hidden"></div>
+        </div>
+
+        <!-- admin body: revealed only after the key checks out -->
+        <div id="adminBody" class="hidden">
+        <div class="card">
+          <h2 class="section">⚙️ Match Setup</h2>
           <div class="import-box">
             <div class="f" style="margin-bottom: 10px">
               ⚽ IMPORT REAL MATCH (football-data.org)
@@ -228,6 +249,14 @@
             >
           </div>
           <div id="adminMsg" class="msg hidden"></div>
+        </div>
+
+        <div class="card">
+          <h4>ALL PREDICTIONS <span class="live">LIVE</span></h4>
+          <div id="adminLbList">
+            <div class="empty">No predictions yet.</div>
+          </div>
+        </div>
         </div>
       </div>
     </div>
