@@ -35,7 +35,7 @@ onAuthStateChanged(auth, async user => {
   if (!user) return;
   uid = user.uid;
   // live match banner (public read)
-  onSnapshot(MATCH_REF, snap => { match = snap.data() || {}; renderMatch(); });
+  onSnapshot(MATCH_REF, snap => { match = snap.data() || {}; renderMatch(); revealPage(); });
   // if this browser already submitted, unlock consensus
   try {
     const mine = await getDoc(doc(db, 'predictions', uid));
@@ -44,6 +44,25 @@ onAuthStateChanged(auth, async user => {
   if (revealed) subscribeConsensus();
   renderGate();
 });
+
+// ── reveal the page once match details + flag images are ready ──
+let pageShown = false;
+function whenFlagsReady() {
+  const imgs = ['homeFlag', 'awayFlag']
+    .flatMap(id => Array.from($(id).querySelectorAll('img')));
+  if (!imgs.length) return Promise.resolve();          // text/emoji flags, nothing to await
+  return Promise.all(imgs.map(img => img.complete
+    ? Promise.resolve()
+    : new Promise(res => { img.onload = img.onerror = res; })));
+}
+async function revealPage() {
+  if (pageShown) return;
+  pageShown = true;
+  await whenFlagsReady();
+  $('loader').classList.add('hidden');
+}
+// safety net: never trap the user on the loader if Firestore is unreachable
+setTimeout(revealPage, 8000);
 
 // ── lock state: manual lock OR kickoff time reached ──
 function kickoffMs() {
@@ -103,12 +122,77 @@ async function submitPred() {
     subscribeConsensus();
     renderGate();
     flash(msg, `Saved: ${match.home_name} ${h} - ${a} ${match.away_name}`, false);
+    celebrate();
   } catch (e) {
     flash(msg, 'Save failed: ' + e.message, true);
   }
 }
 
 function flash(el, txt, err) { el.textContent = txt; el.className = 'msg ' + (err ? 'err' : 'ok'); }
+
+// ── fireworks celebration on submit ──
+function celebrate() {
+  const canvas = document.createElement('canvas');
+  canvas.className = 'fx-canvas';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const resize = () => {
+    canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
+    canvas.style.width = innerWidth + 'px'; canvas.style.height = innerHeight + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  resize();
+  addEventListener('resize', resize);
+
+  const colors = ['#7c5cff', '#a78bfa', '#f0abfc', '#22c55e', '#fbbf24', '#ef4444', '#38bdf8'];
+  const particles = [];
+  const G = 0.045;
+
+  function burst(x, y) {
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const count = 46 + Math.floor(Math.random() * 24);
+    for (let i = 0; i < count; i++) {
+      const ang = (Math.PI * 2 * i) / count + Math.random() * 0.2;
+      const speed = 2 + Math.random() * 4;
+      particles.push({
+        x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+        life: 1, color, size: 1.6 + Math.random() * 1.6
+      });
+    }
+  }
+
+  // launch a few staggered bursts across the top-ish area
+  let launched = 0;
+  const total = 6;
+  const launcher = setInterval(() => {
+    burst(innerWidth * (0.2 + Math.random() * 0.6), innerHeight * (0.2 + Math.random() * 0.35));
+    if (++launched >= total) clearInterval(launcher);
+  }, 220);
+
+  const start = performance.now();
+  (function frame(now) {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (const p of particles) {
+      p.vy += G; p.x += p.vx; p.y += p.vy; p.vx *= 0.99; p.life -= 0.012;
+    }
+    for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if (now - start < 4500 || particles.length) {
+      requestAnimationFrame(frame);
+    } else {
+      removeEventListener('resize', resize);
+      canvas.remove();
+    }
+  })(start);
+}
 
 // ── consensus: realtime over predictions collection (rules allow read only after you submit) ──
 function subscribeConsensus() {

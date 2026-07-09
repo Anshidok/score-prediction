@@ -7,6 +7,11 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- loader: covers the page until match details + flags are fetched -->
+    <div id="loader" class="loader">
+      <div class="spinner"></div>
+      <div class="loader-txt">Loading match…</div>
+    </div>
     <div class="top"></div>
     <header>
       <div class="logo"><span>ITCS</span> <span>Prediction Game 2026</span></div>
@@ -226,6 +231,14 @@
         </div>
       </div>
     </div>
+
+    <footer class="site-footer">
+      <div class="foot-inner">
+        <span>Conducted by <strong>IT LAB</strong></span>
+        <span class="foot-sep">•</span>
+        <span>ITCS Prediction Game 2026</span>
+      </div>
+    </footer>
 
     <script type="module" src="app.js"></script>
   </body>
