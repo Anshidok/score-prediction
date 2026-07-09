@@ -78,13 +78,18 @@ let loadedForUid = null;     // which uid's prediction we've already loaded
 async function handleAuth() {
   const user = auth.currentUser;
 
-  // OPEN mode with nobody signed in → get an anonymous session automatically
-  if (!loginRequired() && !user && !anonSigningIn) {
-    anonSigningIn = true;
-    try { await signInAnonymously(auth); }
-    catch (e) { console.error('anon', e); }
-    finally { anonSigningIn = false; }
-    return;   // onAuthStateChanged will re-run handleAuth with the new user
+  // OPEN mode with nobody signed in → the gate must never show; hide it right
+  // away (don't wait on the anonymous sign-in, which may be slow or disabled),
+  // then get an anonymous session in the background.
+  if (!loginRequired() && !user) {
+    renderAuth(); renderViews();
+    if (!anonSigningIn) {
+      anonSigningIn = true;
+      try { await signInAnonymously(auth); }
+      catch (e) { console.error('anon', e); authResolved = true; maybeReveal(); }
+      finally { anonSigningIn = false; }
+    }
+    return;   // on success, onAuthStateChanged re-runs handleAuth with the user
   }
 
   const authed = isAuthorized(user);
