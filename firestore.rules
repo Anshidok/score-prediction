@@ -28,6 +28,15 @@ service cloud.firestore {
         && get(ref).data.get('live', {}) != null
         && get(ref).data.get('live', {}).get('status', '') == 'FINISHED';
     }
+    function matchConcluded() {
+      // over once manually locked OR kickoff time has passed — mirrors the client's
+      // contestOver(), so predictions stay visible after the match even if the final
+      // score was never published.
+      let ref = /databases/$(database)/documents/config/match;
+      return exists(ref)
+        && (get(ref).data.get('locked', false) == true
+            || request.time >= get(ref).data.get('kickoff', timestamp.date(2999, 1, 1)));
+    }
     function realAccount() {
       // require a real (non-anonymous) sign-in so identity is one-per-person
       return request.auth != null
@@ -67,8 +76,9 @@ service cloud.firestore {
     }
 
     match /predictions/{userId} {
-      // REVEAL GATE: you may read predictions only after you have submitted yours
-      allow read: if iHavePredicted() || resultFinal();
+      // REVEAL GATE: read after you submit, once the result is final, or once the
+      // match is over (locked / kickoff passed) so results persist post-match.
+      allow read: if iHavePredicted() || resultFinal() || matchConcluded();
 
       // you may write only your own prediction, while the match is unlocked
       allow create, update: if authOk()

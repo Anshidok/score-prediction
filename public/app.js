@@ -202,6 +202,10 @@ function matchStarted() {
 function resultFinal() {
   return match?.live?.status === 'FINISHED' && match?.live?.home != null;
 }
+// contest is over once predictions lock (manual lock OR kickoff passed). From here
+// we keep showing everyone's predictions + winners until a new match or a clear —
+// no reverting to a fresh open form just because the final score wasn't published.
+function contestOver() { return isLocked(); }
 function finalScore() {
   return resultFinal() ? { h: match.live.home, a: match.live.away } : null;
 }
@@ -239,9 +243,13 @@ function renderMatch() {
   renderMine();     // refresh the private "your prediction" line (team names may have loaded)
   renderNameLock(); // keep the name field vs "Playing as" label in sync
 
-  // the predictions list shows once the result is final, or after kickoff to a predictor
+  // once the contest is over, reveal predictions to everyone (not only predictors)
+  if (resultFinal() || contestOver()) subscribeConsensus();
+
+  // the predictions list shows once the result is final, once the contest is over,
+  // or after kickoff to a predictor
   const predsCard = $('predsCard');
-  if (predsCard) predsCard.classList.toggle('hidden', !(resultFinal() || (revealed && started)));
+  if (predsCard) predsCard.classList.toggle('hidden', !(resultFinal() || contestOver() || (revealed && started)));
 
   if (resultFinal()) {
     subscribeConsensus();
@@ -526,13 +534,13 @@ function subscribeConsensus() {
 }
 
 function renderGate() {
-  const open = revealed || resultFinal();
+  const open = revealed || resultFinal() || contestOver();
   $('gateLocked').classList.toggle('hidden', open);
   $('gateOpen').classList.toggle('hidden', !open);
 }
 
 function renderConsensus(preds) {
-  if (!revealed && !resultFinal()) return;
+  if (!revealed && !resultFinal() && !contestOver()) return;
   const n = preds.length;
   let w = 0, l = 0, d = 0;
   for (const p of preds) { if (p.h > p.a) w++; else if (p.h < p.a) l++; else d++; }
