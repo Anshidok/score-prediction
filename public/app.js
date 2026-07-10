@@ -36,6 +36,7 @@ function flagMarkup(flag) {
 onSnapshot(MATCH_REF, snap => {
   match = snap.data() || {};
   renderMatch();
+  renderViews();       // swap predict↔results screen live when the result is published
   handleAuth();        // auth mode (requireLogin) lives on the match doc
   matchLoaded = true; maybeReveal();
 });
@@ -233,6 +234,9 @@ function renderMatch() {
 
   const locked = isLocked();
   const started = matchStarted();
+  // once locked, hide the whole prediction form; lock stays enforced internally (rules + isLocked)
+  const pc = $('predictCard');
+  if (pc) pc.classList.toggle('hidden', locked);
   $('lockBadge').classList.toggle('hidden', !locked);
   $('lockBadge').textContent = started ? '🔒 LOCKED — MATCH STARTED' : '🔒 PREDICTIONS LOCKED';
   $('submitBtn').disabled = locked;
@@ -245,6 +249,9 @@ function renderMatch() {
 
   // once the contest is over, reveal predictions to everyone (not only predictors)
   if (resultFinal() || contestOver()) subscribeConsensus();
+  // a match-doc change (result published) doesn't fire the predictions listener,
+  // so rebuild winners/consensus from the cached predictions right here
+  renderConsensus(lastPreds);
 
   // the predictions list shows once the result is final, once the contest is over,
   // or after kickoff to a predictor
@@ -525,11 +532,12 @@ function startFireworks() {
 }
 
 // ── consensus: realtime over predictions collection (rules allow read only after you submit) ──
+let lastPreds = [];   // cached so a match-doc change (e.g. result published) can re-render winners
 function subscribeConsensus() {
   if (predsUnsub) return;
   predsUnsub = onSnapshot(PREDS, snap => {
-    const preds = snap.docs.map(d => d.data());
-    renderConsensus(preds);
+    lastPreds = snap.docs.map(d => d.data());
+    renderConsensus(lastPreds);
   }, e => console.error('consensus', e));
 }
 
