@@ -30,10 +30,13 @@
       </span>
     </header>
 
-    <!-- SIGN-IN GATE: shown until the user authenticates -->
     <div id="authGate" class="auth-gate hidden">
       <div class="card auth-card">
-        <div class="auth-emoji">⚽</div>
+        <h1 class="auth-hero-title">
+          SCORE<br/>PREDICTION
+        </h1>
+        <!-- <img src="fifa26-logo.png" alt="FIFA 26" class="auth-logo-img" /> -->
+        <div class="auth-emoji" style="display: none;">⚽</div>
         <h2>Sign in to predict</h2>
         <p class="sub">
           Sign in with Google to make your prediction. One prediction per
@@ -50,7 +53,7 @@
         >
           Guess the score and win food coupons!🏆
         </p>
-        <button class="btn google-btn" onclick="signInGoogle()">
+        <button class="btn google-btn pill-light" onclick="signInGoogle()">
           <span class="g-mark">
             <svg width="14" height="14" viewBox="0 0 48 48">
               <path 
