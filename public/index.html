@@ -36,7 +36,7 @@
         <h2>Sign in to predict</h2>
         <p class="sub">
           Sign in with Google to make your prediction. One prediction per
-          account.
+          person.
         </p>
         <p
           class="sub"
@@ -97,8 +97,16 @@
                 color: var(--brand);
               "
             >
-              Hungry for a win? 🌮 Guess the score and win food coupons!<br/>
-              <span style="font-size: 11px; font-weight: normal; color: var(--muted);">🏆 Winners will be announced shortly after the final whistle!</span>
+              Hungry for a win? 🌮 Guess the score and win food coupons!<br />
+              <span
+                style="
+                  font-size: 11px;
+                  font-weight: normal;
+                  color: var(--muted);
+                "
+                >🏆 Winners will be announced shortly after the final
+                whistle!</span
+              >
             </p>
             <div id="nameField" style="margin-bottom: 16px">
               <label class="f">YOUR NAME</label>
@@ -255,7 +263,11 @@
     <div id="view-admin" class="hidden">
       <div class="wrap" style="grid-template-columns: 1fr">
         <!-- key gate: shown until the admin key is verified -->
-        <div class="card" id="adminGate" style="max-width: 360px; margin: 0 auto;">
+        <div
+          class="card"
+          id="adminGate"
+          style="max-width: 360px; margin: 0 auto"
+        >
           <h2 class="section">🔑 Admin Access</h2>
           <div style="margin-bottom: 16px">
             <label class="f">ADMIN KEY</label>
