@@ -308,6 +308,15 @@ function renderMatch() {
       : (match.live.label || 'FULL TIME');
   }
 
+  // the draw is one-shot: lock the button once a winner exists (Clear result re-enables)
+  const drawBtn = $('drawWinnerBtn');
+  if (drawBtn) {
+    const drawn = !!match?.final_winner;
+    drawBtn.disabled = drawn;
+    drawBtn.classList.toggle('ghost', drawn);
+    drawBtn.title = drawn ? 'Already drawn — use Clear result to redo.' : '';
+  }
+
   renderLive();            // live in-play score stays hidden
   manageResultPolling();   // fetch the FINAL score only after the match should be over
   manageCountdown();       // live countdown until kickoff
@@ -658,6 +667,12 @@ function startFireworks() {
 
 // ── consensus: realtime over predictions collection (rules allow read only after you submit) ──
 let lastPreds = [];   // cached so a match-doc change (e.g. result published) can re-render winners
+
+// ── final winner (admin-drawn, stored on config/match so everyone sees the same one) ──
+let fwShownTs = null;       // final_winner.ts already rendered — stops re-animating each snapshot
+let fwBootstrapped = false; // true after the first render: a page load with a winner already
+                            // set shows it settled, only a live draw gets the shuffle
+let fwShuffleTimer = null;
 function subscribeConsensus() {
   if (predsUnsub) return;
   predsUnsub = onSnapshot(PREDS, snap => {
@@ -700,11 +715,60 @@ function renderConsensus(preds) {
   // dedicated results screen winners list
   if (result && $('rvWinnersList')) $('rvWinnersList').innerHTML = html;
 
+  renderFinalWinner(preds, result);
+
   // fireworks only when someone actually won
   hasWinners = !!result && preds.some(p => isWinner(p, result));
   manageFireworks();
 
   $('lbList').innerHTML = predListHTML(preds, 'No predictions yet. Be first!', result);
+  fwBootstrapped = true;
+}
+
+// the single winner the admin drew at random from the tied winners. Lives on
+// config/match.final_winner, so this renders reactively for every client.
+function renderFinalWinner(preds, result) {
+  const card = $('finalWinnerCard');
+  if (!card) return;
+  const fw = match?.final_winner;
+  if (!fw || !result) {
+    card.classList.add('hidden');
+    fwShownTs = null;
+    if (fwShuffleTimer) { clearInterval(fwShuffleTimer); fwShuffleTimer = null; }
+    return;
+  }
+  if (fwShownTs === fw.ts) return;   // already rendered this draw
+  fwShownTs = fw.ts;
+  card.classList.remove('hidden');
+
+  // shuffle through the tied names, but only for a draw that lands while we're watching
+  const pool = preds.filter(p => isWinner(p, result)).map(p => p.name);
+  if (fwBootstrapped && pool.length > 1) shuffleToWinner(pool, fw);
+  else $('finalWinnerBody').innerHTML = finalWinnerHTML(fw);
+}
+
+function finalWinnerHTML(fw, shuffling) {
+  const ini = String(fw.name).trim().slice(0, 2).toUpperCase();
+  const sub = fw.pool > 1 ? `Drawn at random from ${fw.pool} correct scores` : 'Only correct score';
+  return `<div class="lb-item winner${shuffling ? ' fw-shuffling' : ''}"><div class="av">${esc(ini)}</div>
+    <div class="nm">${esc(fw.name)}<small>${esc(shuffling ? 'Drawing…' : sub)}</small></div>
+    <div class="pt">${fw.h} - ${fw.a}</div></div>`;
+}
+
+// ~2s of suspense cycling the tied names before settling on the real (server-picked) winner
+function shuffleToWinner(pool, fw) {
+  if (fwShuffleTimer) { clearInterval(fwShuffleTimer); fwShuffleTimer = null; }
+  const body = $('finalWinnerBody');
+  const start = Date.now();
+  fwShuffleTimer = setInterval(() => {
+    if (Date.now() - start >= 2000) {
+      clearInterval(fwShuffleTimer); fwShuffleTimer = null;
+      body.innerHTML = finalWinnerHTML(fw);   // settle on the actual winner
+      return;
+    }
+    const name = pool[Math.floor(Math.random() * pool.length)];
+    body.innerHTML = finalWinnerHTML({ ...fw, name }, true);
+  }, 90);
 }
 
 // markup for the exact-score winners (or an empty-state message)
@@ -886,6 +950,14 @@ async function publishResult() {
     flash($('adminMsg'), `Result published: ${home} - ${away} — winners are now live.`, false);
   } catch (e) { flash($('adminMsg'), e.message, true); }
 }
+// randomly pick one winner out of the tied set (server-side, so all clients agree)
+async function drawFinalWinner() {
+  if (!confirm('Draw a random final winner? This is final — use Clear result to redo.')) return;
+  try {
+    const { final_winner } = await adminPost('finalWinner', {});
+    flash($('adminMsg'), `Final winner: ${final_winner.name} (from ${final_winner.pool}).`, false);
+  } catch (e) { flash($('adminMsg'), e.message, true); }
+}
 async function clearResult() {
   if (!confirm('Clear the published result? (winners will be hidden again)')) return;
   try {
@@ -1017,4 +1089,4 @@ setInterval(() => { if (match) renderMatch(); }, 20000);
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
   deletePrediction, loadFdMatches, applyFdMatch, signInGoogle, signOutUser, toggleAuthMode, publishResult,
-  clearResult, selectPens, selectResPens });
+  clearResult, drawFinalWinner, selectPens, selectResPens });

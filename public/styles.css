@@ -621,6 +621,25 @@ input.txt:focus {
   z-index: 0;
   pointer-events: none;
 }
+/* the admin-drawn single winner — gold, to stand apart from the green winner rows */
+.final-winner {
+  border: 1px solid #fcd34d;
+  background: linear-gradient(180deg, #fffbeb, #fff);
+}
+.final-winner .section {
+  margin-bottom: 14px;
+}
+.final-winner .lb-item.winner {
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+}
+/* mid-shuffle: name is still cycling, so de-emphasise it until it settles */
+.final-winner .lb-item.fw-shuffling {
+  opacity: 0.65;
+}
+.final-winner .lb-item.fw-shuffling .nm {
+  font-style: italic;
+}
 .result-card .rv-match {
   display: flex;
   align-items: center;

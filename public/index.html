@@ -277,6 +277,11 @@
           </h2>
           <div id="rvWinnersList"></div>
         </div>
+        <!-- FINAL WINNER: only appears once the admin draws one from the tied winners -->
+        <div class="card final-winner hidden" id="finalWinnerCard">
+          <h2 class="section">🎯 Final Winner</h2>
+          <div id="finalWinnerBody"></div>
+        </div>
         <!-- MATCH RESULT (below) -->
         <div class="card result-card">
           <div class="rv-match">
@@ -463,11 +468,18 @@
               <button class="btn" onclick="publishResult()">
                 Publish Result
               </button>
+              <button class="btn" onclick="drawFinalWinner()" id="drawWinnerBtn">
+                🎯 Find Final Winner
+              </button>
               <span class="link" onclick="clearResult()">Clear result</span>
             </div>
             <div class="f sub" style="margin-top: 6px">
               Sets the final score to FULL TIME and reveals winners to everyone.
               Works for manual matches too — use it to test before a real match.
+            </div>
+            <div class="f sub" style="margin-top: 6px">
+              <b>Find Final Winner</b> randomly picks one person when several got the
+              exact score. Final once drawn — use Clear result to redo.
             </div>
             <hr />
             <div class="row-actions">

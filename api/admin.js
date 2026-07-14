@@ -1,7 +1,7 @@
 // Vercel serverless function: admin actions via Firebase Admin SDK.
 // Protected by ADMIN_KEY. Admin SDK bypasses Firestore security rules.
 // POST /api/admin  body: { action, adminKey, ...payload }
-//   action: setMatch | lock | clear | reset | list | deletePrediction
+//   action: setMatch | lock | clear | reset | list | deletePrediction | finalWinner
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -10,8 +10,18 @@ const DEFAULT_MATCH = {
   away_name: 'France', away_flag: 'fr',
   info: 'Dec 14, 2024 • 20:00 GMT', stage: 'Group Stage • Match 42',
   locked: false, requireLogin: false, fd_id: null, live: null,
-  poster_url: '', show_poster: false, knockout: false
+  poster_url: '', show_poster: false, knockout: false, final_winner: null
 };
+
+// the tied winners for a published result. Mirrors the client's isWinner()/pensDecided()
+// (public/app.js): exact score, plus the advancing side when a KNOCKOUT ended level.
+function winnersFor(preds, match) {
+  const live = match.live;
+  if (!live || live.status !== 'FINISHED' || live.home == null) return [];
+  const pens = !!match.knockout && live.home === live.away && !!live.pens_winner;
+  return preds.filter(p =>
+    p.h === live.home && p.a === live.away && (!pens || p.pens === live.pens_winner));
+}
 
 function admin() {
   if (!getApps().length) {
@@ -62,6 +72,7 @@ export default async function handler(req, res) {
       // football-data id enables live scores; changing the match clears old live data
       data.fd_id = body.fd_id != null ? body.fd_id : null;
       data.live = null;
+      data.final_winner = null;   // a new match invalidates any previous draw
       await matchRef.set(data, { merge: true });
       return res.json({ ok: true });
     }
@@ -83,7 +94,7 @@ export default async function handler(req, res) {
       // manually publish (or clear) the FINAL score → drives the winners feature.
       // Works for ANY match, incl. manual ones with no football-data id.
       if (body.clear) {
-        await matchRef.set({ live: null }, { merge: true });
+        await matchRef.set({ live: null, final_winner: null }, { merge: true });
         return res.json({ ok: true });
       }
       const home = Number(body.home), away = Number(body.away);
@@ -96,12 +107,14 @@ export default async function handler(req, res) {
         pens_winner = body.pens_winner;
       }
       await matchRef.set({
-        live: { home, away, status: 'FINISHED', label: 'FULL TIME', ts: Date.now(), pens_winner }
+        live: { home, away, status: 'FINISHED', label: 'FULL TIME', ts: Date.now(), pens_winner },
+        final_winner: null   // re-publishing a score invalidates any previous draw
       }, { merge: true });
       return res.json({ ok: true });
     }
     if (action === 'clear') {
       await clearPredictions(db);
+      await matchRef.set({ final_winner: null }, { merge: true });  // no preds → no draw
       return res.json({ ok: true });
     }
     if (action === 'reset') {
@@ -118,7 +131,31 @@ export default async function handler(req, res) {
       // delete the prediction and free up the reserved name (mirrors clearPredictions)
       await db.collection('predictions').doc(id).delete();
       await db.collection('names').doc(id).delete();
+      // don't leave a drawn winner pointing at a prediction that no longer exists
+      const cur = (await matchRef.get()).data() || {};
+      if (cur.final_winner?.id === id) await matchRef.set({ final_winner: null }, { merge: true });
       return res.json({ ok: true });
+    }
+    if (action === 'finalWinner') {
+      // randomly pick ONE of the tied winners. Done server-side so every client sees the
+      // same person, and so the winner set can't be spoofed by the caller.
+      const m = (await matchRef.get()).data() || {};
+      if (!m.live || m.live.status !== 'FINISHED' || m.live.home == null) {
+        return res.status(400).json({ error: 'Publish the final result first.' });
+      }
+      if (m.final_winner) {
+        return res.status(400).json({ error: 'Final winner already drawn. Clear the result to redo.' });
+      }
+      const snap = await db.collection('predictions').get();
+      const winners = winnersFor(snap.docs.map(d => ({ id: d.id, ...d.data() })), m);
+      if (!winners.length) return res.status(400).json({ error: 'No winners to draw from.' });
+      const pick = winners[Math.floor(Math.random() * winners.length)];
+      const final_winner = {
+        id: pick.id, name: pick.name, h: pick.h, a: pick.a,
+        pens: pick.pens ?? null, pool: winners.length, ts: Date.now()
+      };
+      await matchRef.set({ final_winner }, { merge: true });
+      return res.json({ ok: true, final_winner });
     }
     return res.status(400).json({ error: 'Unknown action' });
   } catch (e) {
