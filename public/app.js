@@ -333,6 +333,19 @@ function renderNameLock() {
   } else {
     field.classList.remove('hidden');
     pa.classList.add('hidden');
+    
+    if (loginRequired() && auth.currentUser && !auth.currentUser.isAnonymous) {
+      const user = auth.currentUser;
+      const name = user.displayName || (user.email ? user.email.split('@')[0] : 'Player');
+      if (!$('userName').value) $('userName').value = name;
+      $('userName').readOnly = true;
+      $('userName').style.opacity = '0.6';
+      $('userName').style.backgroundColor = '#f7f8fb';
+    } else {
+      $('userName').readOnly = false;
+      $('userName').style.opacity = '1';
+      $('userName').style.backgroundColor = '';
+    }
   }
 }
 
