@@ -74,8 +74,15 @@ const server = http.createServer(async (req, res) => {
   try {
     let path = decodeURIComponent(pathname);
     if (path === '/') path = '/index.html';
-    const file = normalize(join(ROOT, path));
+    let file = normalize(join(ROOT, path));
     if (!file.startsWith(ROOT)) { res.writeHead(403).end('Forbidden'); return; }
+    // local-only: serve a gitignored firebase-config.local.js (test project) in place
+    // of the committed prod config, so local dev can point at a separate Firebase DB
+    // without touching the file that ships to production.
+    if (path === '/firebase-config.js') {
+      const override = normalize(join(ROOT, 'firebase-config.local.js'));
+      if (existsSync(override)) file = override;
+    }
     const body = await readFile(file);
     res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream' });
     res.end(body);
@@ -96,6 +103,6 @@ server.on('error', err => {
 });
 server.on('listening', () => {
   console.log(`\n  ProScore (full local: static + /api) → http://localhost:${port}`);
-  console.log(`  ADMIN_KEY ${process.env.ADMIN_KEY ? 'loaded' : 'MISSING'} · FIREBASE_SERVICE_ACCOUNT ${process.env.FIREBASE_SERVICE_ACCOUNT ? 'loaded' : 'MISSING'} · FD_KEY ${process.env.FD_KEY ? 'loaded' : 'missing'}\n`);
+  console.log(`  ADMIN_KEY ${process.env.ADMIN_KEY ? 'loaded' : 'MISSING'} · DELETE_KEY ${process.env.DELETE_KEY ? 'loaded' : 'MISSING'} · FIREBASE_SERVICE_ACCOUNT ${process.env.FIREBASE_SERVICE_ACCOUNT ? 'loaded' : 'MISSING'} · FD_KEY ${process.env.FD_KEY ? 'loaded' : 'missing'}\n`);
 });
 server.listen(port);

@@ -443,6 +443,25 @@ input.txt:focus {
   font-size: 13px;
   font-weight: 800;
 }
+/* admin-only per-row delete affordance */
+.lb-del {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.lb-del:hover {
+  background: #fee2e2;
+  color: var(--loss);
+}
 .admin-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

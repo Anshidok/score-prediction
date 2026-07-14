@@ -56,6 +56,7 @@ Set **Environment Variables** (Vercel dashboard → Settings → Environment Var
 |-----|-------|
 | `FD_KEY` | your football-data.org token |
 | `ADMIN_KEY` | a secret you choose (typed in the Admin tab) |
+| `DELETE_KEY` | a separate secret required to delete a single prediction (second factor, prompted at delete time) |
 | `FIREBASE_SERVICE_ACCOUNT` | full JSON contents of the service-account key (one line) |
 
 Redeploy after adding envs.
@@ -67,11 +68,11 @@ Redeploy after adding envs.
 npm install
 vercel dev        # runs static + api functions locally, loads .env.local
 ```
-Put the same three vars in `.env.local` (gitignored). Firestore/Auth work against your real Firebase project.
+Put the same vars in `.env.local` (gitignored). Firestore/Auth work against your real Firebase project.
 
 ## Usage
 - **Employees** — enter name, pick score, Submit. Consensus + prediction list reveal after submit and update live.
-- **Admin** — enter `ADMIN_KEY`, set teams (dropdown **or** import a real fixture from football-data), **Lock** at kickoff, **Clear** or **Reset**.
+- **Admin** — enter `ADMIN_KEY`, set teams (dropdown **or** import a real fixture from football-data), **Lock** at kickoff, **Clear** or **Reset**. Delete a single prediction from the live list via the ✕ button (requires the `DELETE_KEY`).
 
 ## Security notes
 - Reveal-gate + lock are enforced by Firestore rules, not just UI — can't be bypassed via devtools.

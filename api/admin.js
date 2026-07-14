@@ -1,7 +1,7 @@
 // Vercel serverless function: admin actions via Firebase Admin SDK.
 // Protected by ADMIN_KEY. Admin SDK bypasses Firestore security rules.
 // POST /api/admin  body: { action, adminKey, ...payload }
-//   action: setMatch | lock | clear | reset | list
+//   action: setMatch | lock | clear | reset | list | deletePrediction
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -67,7 +67,7 @@ export default async function handler(req, res) {
     }
     if (action === 'list') {
       const snap = await db.collection('predictions').get();
-      const preds = snap.docs.map(d => d.data());
+      const preds = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       return res.json({ preds });
     }
     if (action === 'lock') {
@@ -107,6 +107,17 @@ export default async function handler(req, res) {
     if (action === 'reset') {
       await clearPredictions(db);
       await matchRef.set(DEFAULT_MATCH);
+      return res.json({ ok: true });
+    }
+    if (action === 'deletePrediction') {
+      // second factor beyond ADMIN_KEY: a separate DELETE_KEY, checked here only
+      if (!process.env.DELETE_KEY) return res.status(500).json({ error: 'Delete key not configured' });
+      if (body.deleteKey !== process.env.DELETE_KEY) return res.status(401).json({ error: 'Bad delete key' });
+      const id = (body.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'Missing prediction id' });
+      // delete the prediction and free up the reserved name (mirrors clearPredictions)
+      await db.collection('predictions').doc(id).delete();
+      await db.collection('names').doc(id).delete();
       return res.json({ ok: true });
     }
     return res.status(400).json({ error: 'Unknown action' });

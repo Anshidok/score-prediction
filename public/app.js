@@ -721,8 +721,9 @@ function winnersHTML(preds, result) {
   }).join('');
 }
 
-// build the individual-predictions markup, shared by the public + admin lists
-function predListHTML(preds, emptyMsg, result) {
+// build the individual-predictions markup, shared by the public + admin lists.
+// opts.admin adds a per-row delete button (never shown on the public leaderboard).
+function predListHTML(preds, emptyMsg, result, opts = {}) {
   if (!preds.length) return `<div class="empty">${esc(emptyMsg || 'No predictions yet.')}</div>`;
   const home = match?.home_name || 'HOME', away = match?.away_name || 'AWAY';
   
@@ -751,9 +752,10 @@ function predListHTML(preds, emptyMsg, result) {
     const won = isWinner(p, result);
     const winnerClass = won ? ' winner' : '';
     const trophy = won ? ' 🏆' : '';
+    const del = opts.admin ? `<button class="lb-del" title="Delete prediction" onclick="deletePrediction('${p.id}')">✕</button>` : '';
     return `<div class="lb-item${winnerClass}"><div class="av">${esc(ini)}</div>
       <div class="nm">${esc(p.name)}${trophy}<small>${esc(res)}</small></div>
-      <div class="pt">${p.h} - ${p.a}</div></div>`;
+      <div class="pt">${p.h} - ${p.a}</div>${del}</div>`;
   }).join('');
 }
 function set(k, v) { $(k + 'Pct').textContent = v + '%'; $(k + 'Bar').style.width = v + '%'; }
@@ -794,7 +796,7 @@ let adminPredsTimer = null;
 async function loadAdminPreds() {
   try {
     const { preds } = await adminPost('list', {});
-    $('adminLbList').innerHTML = predListHTML(preds || [], 'No predictions yet.', finalScore());
+    $('adminLbList').innerHTML = predListHTML(preds || [], 'No predictions yet.', finalScore(), { admin: true });
   } catch (e) {
     $('adminLbList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
@@ -938,6 +940,17 @@ async function resetAll() {
   try { await adminPost('reset', {}); flash($('adminMsg'), 'Everything reset.', false); }
   catch (e) { flash($('adminMsg'), e.message, true); }
 }
+// delete a single prediction; requires the separate DELETE_KEY (checked server-side)
+async function deletePrediction(id) {
+  if (!confirm('Delete this prediction?')) return;
+  const deleteKey = prompt('Enter the DELETE key to confirm:');
+  if (!deleteKey) return;
+  try {
+    await adminPost('deletePrediction', { id, deleteKey });
+    flash($('adminMsg'), 'Prediction deleted.', false);
+    loadAdminPreds();               // refresh immediately, don't wait for the 10s poll
+  } catch (e) { flash($('adminMsg'), e.message, true); }
+}
 
 // ── football-data import (via /api/fd proxy) ──
 let fdMatches = [];
@@ -1003,5 +1016,5 @@ setInterval(() => { if (match) renderMatch(); }, 20000);
 
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
-  loadFdMatches, applyFdMatch, signInGoogle, signOutUser, toggleAuthMode, publishResult, clearResult,
-  selectPens, selectResPens });
+  deletePrediction, loadFdMatches, applyFdMatch, signInGoogle, signOutUser, toggleAuthMode, publishResult,
+  clearResult, selectPens, selectResPens });

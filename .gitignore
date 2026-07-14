@@ -6,3 +6,5 @@ node_modules/
 serviceAccount*.json
 .env
 .env*.local
+# local-only override to point dev at a test Firebase project
+public/firebase-config.local.js
