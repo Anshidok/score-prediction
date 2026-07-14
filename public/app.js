@@ -283,6 +283,46 @@ function renderMatch() {
 
   renderLive();            // live in-play score stays hidden
   manageResultPolling();   // fetch the FINAL score only after the match should be over
+  manageCountdown();       // live countdown until kickoff
+}
+
+let countdownInterval = null;
+function manageCountdown() {
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+  const timerEl = $('kickoffTimer');
+  if (!timerEl) return;
+  
+  const ms = kickoffMs();
+  // Hide if no kickoff, already started, or manually locked
+  if (!ms || ms <= Date.now() || match?.locked === true) {
+    timerEl.classList.add('hidden');
+    return;
+  }
+  
+  timerEl.classList.remove('hidden');
+  
+  function update() {
+    const diff = ms - Date.now();
+    if (diff <= 0) {
+      timerEl.classList.add('hidden');
+      if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+      renderMatch();
+      return;
+    }
+    const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    const m = Math.floor((diff / 1000 / 60) % 60);
+    const s = Math.floor((diff / 1000) % 60);
+    const p = x => String(x).padStart(2, '0');
+    
+    let txt = '';
+    if (d > 0) txt += `${d}d `;
+    txt += `${p(h)}:${p(m)}:${p(s)}`;
+    timerEl.textContent = `⏱ Starts in ${txt}`;
+  }
+  
+  update();
+  countdownInterval = setInterval(update, 1000);
 }
 
 // ── live in-play score: DISABLED ──
