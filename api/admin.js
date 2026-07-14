@@ -9,7 +9,8 @@ const DEFAULT_MATCH = {
   home_name: 'Brazil', home_flag: 'br',
   away_name: 'France', away_flag: 'fr',
   info: 'Dec 14, 2024 • 20:00 GMT', stage: 'Group Stage • Match 42',
-  locked: false, requireLogin: false, fd_id: null, live: null
+  locked: false, requireLogin: false, fd_id: null, live: null,
+  poster_url: '', show_poster: false
 };
 
 function admin() {
@@ -50,7 +51,9 @@ export default async function handler(req, res) {
         away_flag: (body.away_flag || '').trim(),
         info: (body.info || '').trim(),
         stage: (body.stage || '').trim(),
-        locked: false
+        locked: false,
+        poster_url: (body.poster_url || '').trim(),
+        show_poster: !!body.show_poster
       };
       // kickoff (ISO string) → Firestore Timestamp for auto-lock; null clears it
       if (body.kickoff) data.kickoff = Timestamp.fromDate(new Date(body.kickoff));

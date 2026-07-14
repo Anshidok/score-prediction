@@ -219,6 +219,18 @@ function msToLocalInput(ms) {
 // ── predictions view ──
 function renderMatch() {
   if (!match) return;
+  
+  const pcContainer = $('posterContainer');
+  const pcImg = $('posterImg');
+  if (pcContainer && pcImg) {
+    if (match.show_poster && match.poster_url) {
+      pcImg.src = match.poster_url;
+      pcContainer.classList.remove('hidden');
+    } else {
+      pcContainer.classList.add('hidden');
+    }
+  }
+
   const home = { name: match.home_name || 'Home', flag: match.home_flag || '' };
   const away = { name: match.away_name || 'Away', flag: match.away_flag || '' };
   $('homeName').textContent = home.name;
@@ -707,6 +719,8 @@ function fillAdmin() {
     $('aStage').value = match.stage || '';
     $('aKick').value = match.kickoff ? msToLocalInput(kickoffMs()) : '';
     $('lockBtn').textContent = match.locked ? 'Unlock Predictions' : 'Lock Predictions';
+    $('aPosterUrl').value = match.poster_url || '';
+    $('aShowPoster').checked = !!match.show_poster;
     syncAuthToggle();
     // final-result box: label the score inputs with the team names, seed with any
     // already-published result
@@ -758,7 +772,9 @@ async function saveMatch() {
       home_name: home.name, home_flag: home.flag, away_name: away.name, away_flag: away.flag,
       info: $('aInfo').value, stage: $('aStage').value,
       // local time → ISO (UTC) so the server stores a real kickoff; '' clears it
-      kickoff: kick ? new Date(kick).toISOString() : null
+      kickoff: kick ? new Date(kick).toISOString() : null,
+      poster_url: $('aPosterUrl').value,
+      show_poster: $('aShowPoster').checked
     });
     flash($('adminMsg'), 'Match saved.', false);
   } catch (e) { flash($('adminMsg'), e.message, true); }
