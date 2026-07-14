@@ -170,6 +170,7 @@ input.name:focus,input.txt:focus{border-color:var(--brand)}
   flex-wrap:wrap;gap:10px;font-size:13px;color:var(--muted)}
 .foot-inner strong{color:var(--brand);font-weight:800}
 .foot-sep{color:var(--line)}
+.foot-disclaimer{max-width:1080px;margin:12px auto 0;text-align:center;font-size:11px;color:var(--muted);padding:0 10px}
 
 /* ── responsive: tablet ── */
 @media(max-width:900px){
