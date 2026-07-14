@@ -14,7 +14,9 @@
     </div>
     <div class="top"></div>
     <header>
-      <div class="logo"><span>ITCS</span> <span>Prediction Game 2026</span></div>
+      <div class="logo">
+        <span>ITCS</span> <span>Prediction Game 2026</span>
+      </div>
       <nav id="mainNav">
         <a id="nav-predict" class="active" onclick="show('predict')"
           >Predictions</a
@@ -33,7 +35,19 @@
         <div class="auth-emoji">⚽</div>
         <h2>Sign in to predict</h2>
         <p class="sub">
-          Sign in with Google to make your prediction. One prediction per account.
+          Sign in with Google to make your prediction. One prediction per
+          account.
+        </p>
+        <p
+          class="sub"
+          style="
+            margin-top: -12px;
+            margin-bottom: 24px;
+            font-weight: 700;
+            color: var(--brand);
+          "
+        >
+          Hungry for a win? 🌮 Guess the score and win food coupons!
         </p>
         <button class="btn google-btn" onclick="signInGoogle()">
           <span class="g-mark">G</span> Sign in with Google
@@ -74,6 +88,17 @@
 
           <div class="card" id="predictCard" style="margin-top: 20px">
             <h2 class="section">🎯 Score Prediction</h2>
+            <p
+              class="section"
+              style="
+                margin-top: -12px;
+                margin-bottom: 16px;
+                font-weight: 700;
+                color: var(--brand);
+              "
+            >
+              Hungry for a win? 🌮 Guess the score and win food coupons!
+            </p>
             <div id="nameField" style="margin-bottom: 16px">
               <label class="f">YOUR NAME</label>
               <input
@@ -135,14 +160,14 @@
           <div class="card locked-note" id="gateLocked">
             <div class="lock-ico">🔒</div>
             <h4 style="margin-bottom: 6px">PREDICTION RESULTS</h4>
-            <p class="sub">
-              Submit your prediction first to see the results.
-            </p>
+            <p class="sub">Submit your prediction first to see the results.</p>
           </div>
 
           <div id="gateOpen" class="hidden">
             <div class="card hidden" id="winnersCard">
-              <h4>🏆 WINNERS <span class="live" id="winnersFt">FULL TIME</span></h4>
+              <h4>
+                🏆 WINNERS <span class="live" id="winnersFt">FULL TIME</span>
+              </h4>
               <div class="result-score" id="winnersScore">0 - 0</div>
               <div id="winnersList"></div>
             </div>
@@ -203,7 +228,9 @@
       <div class="result-wrap">
         <!-- WINNERS (top) -->
         <div class="card winners-hero" id="winnersHero">
-          <h2 class="section">🏆 Winners <span class="live" id="rvFt">FULL TIME</span></h2>
+          <h2 class="section">
+            🏆 Winners <span class="live" id="rvFt">FULL TIME</span>
+          </h2>
           <div id="rvWinnersList"></div>
         </div>
         <!-- MATCH RESULT (below) -->
@@ -237,7 +264,7 @@
               type="password"
               placeholder="admin key"
               autocomplete="off"
-              onkeydown="if(event.key==='Enter')unlockAdmin()"
+              onkeydown="if (event.key === 'Enter') unlockAdmin();"
             />
           </div>
           <button class="btn" style="width: 100%" onclick="unlockAdmin()">
@@ -248,132 +275,158 @@
 
         <!-- admin body: revealed only after the key checks out -->
         <div id="adminBody" class="hidden">
-        <div class="card">
-          <h2 class="section">⚙️ Match Setup</h2>
-          <div class="import-box">
-            <div class="f" style="margin-bottom: 10px">
-              ⚽ IMPORT REAL MATCH (football-data.org)
+          <div class="card">
+            <h2 class="section">⚙️ Match Setup</h2>
+            <div class="import-box">
+              <div class="f" style="margin-bottom: 10px">
+                ⚽ IMPORT REAL MATCH (football-data.org)
+              </div>
+              <div class="admin-grid" style="margin-bottom: 12px">
+                <div>
+                  <label class="f">COMPETITION</label>
+                  <select id="fdComp"></select>
+                </div>
+                <div>
+                  <label class="f">MATCH</label>
+                  <select id="fdMatch">
+                    <option value="">— load competition first —</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row-actions">
+                <button class="btn ghost" onclick="loadFdMatches()">
+                  Load Matches
+                </button>
+                <button class="btn" onclick="applyFdMatch()">
+                  Use Selected Match
+                </button>
+              </div>
+              <div id="fdMsg" class="msg hidden"></div>
             </div>
+            <hr />
+            <div class="f" style="margin-bottom: 10px">✎ OR SET MANUALLY</div>
+            <div class="admin-grid">
+              <div>
+                <label class="f">HOME TEAM</label>
+                <select id="aHome" class="sel"></select>
+              </div>
+              <div>
+                <label class="f">AWAY TEAM</label>
+                <select id="aAway" class="sel"></select>
+              </div>
+              <div>
+                <label class="f">MATCH INFO</label>
+                <input id="aInfo" placeholder="Dec 14, 2024 • 20:00 GMT" />
+              </div>
+              <div>
+                <label class="f">STAGE</label>
+                <input id="aStage" placeholder="Group Stage • Match 42" />
+              </div>
+              <div>
+                <label class="f">KICKOFF (AUTO-LOCK)</label>
+                <input id="aKick" type="datetime-local" />
+              </div>
+            </div>
+            <div class="f sub" style="margin-top: 6px">
+              Predictions auto-lock at kickoff. Leave blank to lock manually
+              only.
+            </div>
+            <hr />
             <div class="admin-grid" style="margin-bottom: 12px">
-              <div>
-                <label class="f">COMPETITION</label>
-                <select id="fdComp"></select>
-              </div>
-              <div>
-                <label class="f">MATCH</label>
-                <select id="fdMatch">
-                  <option value="">— load competition first —</option>
-                </select>
+              <div style="grid-column: 1 / -1">
+                <label class="f">POSTER IMAGE URL</label>
+                <input
+                  id="aPosterUrl"
+                  class="txt"
+                  placeholder="https://example.com/poster.jpg"
+                />
               </div>
             </div>
+            <div class="toggle-row">
+              <div class="toggle-txt">
+                <div class="toggle-title">Show Poster</div>
+                <div class="f sub">
+                  Display the poster image at the top of the predict screen.
+                </div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="aShowPoster" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <hr />
+            <div class="toggle-row">
+              <div class="toggle-txt">
+                <div class="toggle-title">Require Google sign-in</div>
+                <div class="f sub" id="authModeHint">
+                  Off = anyone can predict (open). On = one prediction per
+                  Google account.
+                </div>
+              </div>
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  id="authModeToggle"
+                  onchange="toggleAuthMode()"
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <hr />
+            <div class="f" style="margin-bottom: 10px">
+              🏁 FINAL RESULT (publishes winners)
+            </div>
+            <div class="result-row">
+              <span class="res-team" id="resHomeLbl">Home</span>
+              <input
+                class="res-in"
+                id="resHome"
+                type="number"
+                min="0"
+                max="99"
+                value="0"
+              />
+              <span class="res-dash">–</span>
+              <input
+                class="res-in"
+                id="resAway"
+                type="number"
+                min="0"
+                max="99"
+                value="0"
+              />
+              <span class="res-team" id="resAwayLbl">Away</span>
+            </div>
+            <div class="row-actions" style="margin-top: 12px">
+              <button class="btn" onclick="publishResult()">
+                Publish Result
+              </button>
+              <span class="link" onclick="clearResult()">Clear result</span>
+            </div>
+            <div class="f sub" style="margin-top: 6px">
+              Sets the final score to FULL TIME and reveals winners to everyone.
+              Works for manual matches too — use it to test before a real match.
+            </div>
+            <hr />
             <div class="row-actions">
-              <button class="btn ghost" onclick="loadFdMatches()">
-                Load Matches
+              <button class="btn" onclick="saveMatch()">Save Match</button>
+              <button class="btn ghost" onclick="toggleLock()" id="lockBtn">
+                Lock Predictions
               </button>
-              <button class="btn" onclick="applyFdMatch()">
-                Use Selected Match
-              </button>
+              <span class="link" onclick="clearVotes()">Clear predictions</span>
+              <span class="link" style="color: var(--loss)" onclick="resetAll()"
+                >Reset all</span
+              >
             </div>
-            <div id="fdMsg" class="msg hidden"></div>
+            <div id="adminMsg" class="msg hidden"></div>
           </div>
-          <hr />
-          <div class="f" style="margin-bottom: 10px">✎ OR SET MANUALLY</div>
-          <div class="admin-grid">
-            <div>
-              <label class="f">HOME TEAM</label>
-              <select id="aHome" class="sel"></select>
-            </div>
-            <div>
-              <label class="f">AWAY TEAM</label>
-              <select id="aAway" class="sel"></select>
-            </div>
-            <div>
-              <label class="f">MATCH INFO</label>
-              <input id="aInfo" placeholder="Dec 14, 2024 • 20:00 GMT" />
-            </div>
-            <div>
-              <label class="f">STAGE</label>
-              <input id="aStage" placeholder="Group Stage • Match 42" />
-            </div>
-            <div>
-              <label class="f">KICKOFF (AUTO-LOCK)</label>
-              <input id="aKick" type="datetime-local" />
-            </div>
-          </div>
-          <div class="f sub" style="margin-top: 6px">
-            Predictions auto-lock at kickoff. Leave blank to lock manually only.
-          </div>
-          <hr />
-          <div class="admin-grid" style="margin-bottom: 12px">
-            <div style="grid-column: 1 / -1">
-              <label class="f">POSTER IMAGE URL</label>
-              <input id="aPosterUrl" class="txt" placeholder="https://example.com/poster.jpg" />
-            </div>
-          </div>
-          <div class="toggle-row">
-            <div class="toggle-txt">
-              <div class="toggle-title">Show Poster</div>
-              <div class="f sub">
-                Display the poster image at the top of the predict screen.
-              </div>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="aShowPoster" />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <hr />
-          <div class="toggle-row">
-            <div class="toggle-txt">
-              <div class="toggle-title">Require Google sign-in</div>
-              <div class="f sub" id="authModeHint">
-                Off = anyone can predict (open). On = one prediction per Google account.
-              </div>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="authModeToggle" onchange="toggleAuthMode()" />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <hr />
-          <div class="f" style="margin-bottom: 10px">
-            🏁 FINAL RESULT (publishes winners)
-          </div>
-          <div class="result-row">
-            <span class="res-team" id="resHomeLbl">Home</span>
-            <input class="res-in" id="resHome" type="number" min="0" max="99" value="0" />
-            <span class="res-dash">–</span>
-            <input class="res-in" id="resAway" type="number" min="0" max="99" value="0" />
-            <span class="res-team" id="resAwayLbl">Away</span>
-          </div>
-          <div class="row-actions" style="margin-top: 12px">
-            <button class="btn" onclick="publishResult()">Publish Result</button>
-            <span class="link" onclick="clearResult()">Clear result</span>
-          </div>
-          <div class="f sub" style="margin-top: 6px">
-            Sets the final score to FULL TIME and reveals winners to everyone. Works for
-            manual matches too — use it to test before a real match.
-          </div>
-          <hr />
-          <div class="row-actions">
-            <button class="btn" onclick="saveMatch()">Save Match</button>
-            <button class="btn ghost" onclick="toggleLock()" id="lockBtn">
-              Lock Predictions
-            </button>
-            <span class="link" onclick="clearVotes()">Clear predictions</span>
-            <span class="link" style="color: var(--loss)" onclick="resetAll()"
-              >Reset all</span
-            >
-          </div>
-          <div id="adminMsg" class="msg hidden"></div>
-        </div>
 
-        <div class="card">
-          <h4>ALL PREDICTIONS <span class="live">LIVE</span></h4>
-          <div id="adminLbList">
-            <div class="empty">No predictions yet.</div>
+          <div class="card">
+            <h4>ALL PREDICTIONS <span class="live">LIVE</span></h4>
+            <div id="adminLbList">
+              <div class="empty">No predictions yet.</div>
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </div>
@@ -385,7 +438,8 @@
         <span>ITCS Prediction Game 2026</span>
       </div>
       <div class="foot-disclaimer">
-        Disclaimer: The organizers' decision will be final and binding in all matters related to the contest.
+        Disclaimer: The organizers' decision will be final and binding in all
+        matters related to the contest.
       </div>
     </footer>
 
