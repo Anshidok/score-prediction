@@ -169,6 +169,14 @@
                 </div>
               </div>
             </div>
+            <!-- knockout only: shown when the predicted score is a draw -->
+            <div id="pensPicker" class="pens-picker hidden">
+              <div class="cap">WHO ADVANCES ON PENALTIES?</div>
+              <div class="pens-opts">
+                <button type="button" class="pens-opt" id="pensHome" onclick="selectPens('home')">Home</button>
+                <button type="button" class="pens-opt" id="pensAway" onclick="selectPens('away')">Away</button>
+              </div>
+            </div>
             <hr />
             <button
               class="btn"
@@ -362,6 +370,12 @@
                 <input id="aStage" placeholder="Group Stage • Match 42" />
               </div>
               <div>
+                <label class="f knock-row">
+                  <input type="checkbox" id="aKnockout" />
+                  <span>KNOCKOUT — draw decided on penalties</span>
+                </label>
+              </div>
+              <div>
                 <label class="f">KICKOFF (AUTO-LOCK)</label>
                 <input id="aKick" type="datetime-local" />
               </div>
@@ -435,6 +449,14 @@
                 value="0"
               />
               <span class="res-team" id="resAwayLbl">Away</span>
+            </div>
+            <!-- knockout only: shown when the published score is a draw -->
+            <div id="resPensPicker" class="pens-picker hidden" style="margin-top: 12px">
+              <div class="cap">ADVANCED ON PENALTIES</div>
+              <div class="pens-opts">
+                <button type="button" class="pens-opt" id="resPensHome" onclick="selectResPens('home')">Home</button>
+                <button type="button" class="pens-opt" id="resPensAway" onclick="selectResPens('away')">Away</button>
+              </div>
             </div>
             <div class="row-actions" style="margin-top: 12px">
               <button class="btn" onclick="publishResult()">

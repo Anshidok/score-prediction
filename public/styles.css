@@ -294,6 +294,52 @@ h2.section {
   color: #cbd0dc;
   font-weight: 800;
 }
+/* knockout penalty picker (predict form + admin result box) */
+.pens-picker {
+  margin-top: 16px;
+}
+.pens-picker .cap {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.pens-opts {
+  display: flex;
+  gap: 10px;
+}
+.pens-opt {
+  flex: 1;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #f7f8fb;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pens-opt:hover {
+  background: #eceef4;
+}
+.pens-opt.active {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, #fff);
+  color: var(--brand);
+}
+.knock-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.knock-row input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
 hr {
   border: none;
   border-top: 1px solid var(--line);

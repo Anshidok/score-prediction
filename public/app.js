@@ -21,6 +21,7 @@ let revealed = false;             // consensus unlocked once this account has pr
 let predsUnsub = null;            // predictions listener (attached after submit)
 let takenNames = [];              // [{ name, uid }] — kept live for duplicate checks
 let myPred = null;                // this user's own prediction (private to them)
+let pensPick = null;              // 'home'|'away' — advancing team when predicting a knockout draw
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -127,6 +128,7 @@ function resetForm() {
   $('userName').value = '';
   $('homeScore').value = '0';
   $('awayScore').value = '0';
+  pensPick = null;
   const nm = $('nameMsg'); if (nm) nm.classList.add('hidden');
 }
 
@@ -208,7 +210,28 @@ function resultFinal() {
 // no reverting to a fresh open form just because the final score wasn't published.
 function contestOver() { return isLocked(); }
 function finalScore() {
-  return resultFinal() ? { h: match.live.home, a: match.live.away } : null;
+  return resultFinal()
+    ? { h: match.live.home, a: match.live.away, pens_winner: match.live.pens_winner || null }
+    : null;
+}
+// true if this match is a knockout (a draw is decided on penalties)
+function isKnockout() { return match?.knockout === true; }
+// a knockout result that ended level and was decided on penalties
+function pensDecided(result) {
+  return isKnockout() && result && result.h === result.a && !!result.pens_winner;
+}
+// single authority for "did this prediction win": must nail the exact score, and
+// for a knockout decided on penalties must also pick the advancing team.
+function isWinner(p, result) {
+  if (!result || p.h !== result.h || p.a !== result.a) return false;
+  if (pensDecided(result)) return p.pens === result.pens_winner;
+  return true;
+}
+// team label for a 'home'/'away' side value
+function sideName(side) {
+  if (side === 'home') return match?.home_name || 'Home';
+  if (side === 'away') return match?.away_name || 'Away';
+  return '';
 }
 // ms → 'YYYY-MM-DDTHH:mm' in LOCAL time, for a datetime-local input
 function msToLocalInput(ms) {
@@ -258,6 +281,7 @@ function renderMatch() {
   validateName();   // keep duplicate-name disable in sync after the button reset
   renderMine();     // refresh the private "your prediction" line (team names may have loaded)
   renderNameLock(); // keep the name field vs "Playing as" label in sync
+  renderPensPicker(); // knockout: show/label the penalty picker for a draw pick
 
   // once the contest is over, reveal predictions to everyone (not only predictors)
   if (resultFinal() || contestOver()) subscribeConsensus();
@@ -278,7 +302,10 @@ function renderMatch() {
     $('rvHomeFlag').innerHTML = flagMarkup(home.flag);
     $('rvAwayFlag').innerHTML = flagMarkup(away.flag);
     $('rvScore').textContent = `${match.live.home} - ${match.live.away}`;
-    $('rvFt').textContent = match.live.label || 'FULL TIME';
+    const pw = match.live.pens_winner;
+    $('rvFt').textContent = (isKnockout() && match.live.home === match.live.away && pw)
+      ? `${sideName(pw)} win on penalties`
+      : (match.live.label || 'FULL TIME');
   }
 
   renderLive();            // live in-play score stays hidden
@@ -360,6 +387,8 @@ function prefillForm() {
   if (!$('userName').value.trim()) $('userName').value = myPred.name || '';
   $('homeScore').value = myPred.h;
   $('awayScore').value = myPred.a;
+  pensPick = myPred.pens || null;   // restore the advancing-team pick
+  renderPensPicker();
 }
 
 // once a pick exists, the name is fixed: hide the input, show "Playing as: <name>"
@@ -395,7 +424,11 @@ function renderMine() {
   if (!box) return;
   if (myPred) {
     const home = match?.home_name || 'Home', away = match?.away_name || 'Away';
-    $('myPredScore').textContent = `${home} ${myPred.h} - ${myPred.a} ${away}`;
+    let txt = `${home} ${myPred.h} - ${myPred.a} ${away}`;
+    if (isKnockout() && myPred.h === myPred.a && (myPred.pens === 'home' || myPred.pens === 'away')) {
+      txt += ` · ${sideName(myPred.pens)} advance`;
+    }
+    $('myPredScore').textContent = txt;
     box.classList.remove('hidden');
   } else {
     box.classList.add('hidden');
@@ -405,6 +438,28 @@ function renderMine() {
 function bump(side, d) {
   const el = $(side + 'Score');
   el.value = Math.max(0, Math.min(30, (parseInt(el.value) || 0) + d));
+  renderPensPicker();   // a draw ↔ decisive change toggles the penalty picker
+}
+
+// user taps a side in the penalty picker
+function selectPens(side) {
+  pensPick = side;
+  renderPensPicker();
+}
+
+// show the "who advances on penalties?" picker only for a knockout draw pick;
+// keep the labels and selected state in sync with the current scores/teams.
+function renderPensPicker() {
+  const box = $('pensPicker');
+  if (!box) return;
+  const drawPick = (parseInt($('homeScore').value) || 0) === (parseInt($('awayScore').value) || 0);
+  const show = isKnockout() && drawPick && !isLocked();
+  box.classList.toggle('hidden', !show);
+  if (!show) return;
+  $('pensHome').textContent = sideName('home');
+  $('pensAway').textContent = sideName('away');
+  $('pensHome').classList.toggle('active', pensPick === 'home');
+  $('pensAway').classList.toggle('active', pensPick === 'away');
 }
 
 // name is taken if another user (different uid) already registered the exact
@@ -442,13 +497,18 @@ async function submitPred() {
   }
   const h = parseInt($('homeScore').value);
   const a = parseInt($('awayScore').value);
+  // knockout draw → the advancing team on penalties is required
+  const pens = (isKnockout() && h === a) ? pensPick : null;
+  if (isKnockout() && h === a && !pens) {
+    return flash(msg, 'Pick which team advances on penalties.', true);
+  }
   try {
     // reserve the name first so the registry stays in sync with the prediction
     await setDoc(doc(db, 'names', uid), { name, ts: Date.now() });
     const ts = Date.now();
-    await setDoc(doc(db, 'predictions', uid), { name, h, a, ts });
+    await setDoc(doc(db, 'predictions', uid), { name, h, a, pens, ts });
     const isUpdate = !!myPred;
-    myPred = { name, h, a, ts };   // same uid → this overwrites, never duplicates
+    myPred = { name, h, a, pens, ts };   // same uid → this overwrites, never duplicates
     revealed = true;
     subscribeConsensus();
     renderGate();
@@ -640,8 +700,8 @@ function renderConsensus(preds) {
   // dedicated results screen winners list
   if (result && $('rvWinnersList')) $('rvWinnersList').innerHTML = html;
 
-  // fireworks only when someone actually won the exact score
-  hasWinners = !!result && preds.some(p => p.h === result.h && p.a === result.a);
+  // fireworks only when someone actually won
+  hasWinners = !!result && preds.some(p => isWinner(p, result));
   manageFireworks();
 
   $('lbList').innerHTML = predListHTML(preds, 'No predictions yet. Be first!', result);
@@ -649,12 +709,14 @@ function renderConsensus(preds) {
 
 // markup for the exact-score winners (or an empty-state message)
 function winnersHTML(preds, result) {
-  const winners = preds.filter(p => p.h === result.h && p.a === result.a);
+  const winners = preds.filter(p => isWinner(p, result));
   if (!winners.length) return `<div class="empty">No one nailed the exact score.</div>`;
+  const pens = pensDecided(result);
   return winners.map(p => {
     const ini = String(p.name).trim().slice(0, 2).toUpperCase();
+    const sub = pens ? `Score + ${esc(sideName(p.pens))} on pens 🏆` : 'Correct score 🏆';
     return `<div class="lb-item winner"><div class="av">${esc(ini)}</div>
-      <div class="nm">${esc(p.name)}<small>Correct score 🏆</small></div>
+      <div class="nm">${esc(p.name)}<small>${sub}</small></div>
       <div class="pt">${p.h} - ${p.a}</div></div>`;
   }).join('');
 }
@@ -667,8 +729,8 @@ function predListHTML(preds, emptyMsg, result) {
   const sortedPreds = preds.slice();
   if (result) {
     sortedPreds.sort((a, b) => {
-      const aWon = a.h === result.h && a.a === result.a;
-      const bWon = b.h === result.h && b.a === result.a;
+      const aWon = isWinner(a, result);
+      const bWon = isWinner(b, result);
       if (aWon && !bWon) return -1;
       if (!aWon && bWon) return 1;
       return b.ts - a.ts;
@@ -677,11 +739,16 @@ function predListHTML(preds, emptyMsg, result) {
     sortedPreds.sort((a, b) => b.ts - a.ts);
   }
 
+  // in a knockout, a drawn pick also carries who the user thinks advances on pens
+  const knockout = isKnockout();
   return sortedPreds.map(p => {
-    const res = p.h > p.a ? home.slice(0,3).toUpperCase() + ' win'
-              : p.h < p.a ? away.slice(0,3).toUpperCase() + ' win' : 'Draw';
+    let res = p.h > p.a ? home.slice(0,3).toUpperCase() + ' win'
+            : p.h < p.a ? away.slice(0,3).toUpperCase() + ' win' : 'Draw';
+    if (knockout && p.h === p.a && (p.pens === 'home' || p.pens === 'away')) {
+      res += ` · ${sideName(p.pens).slice(0,3).toUpperCase()} adv`;
+    }
     const ini = String(p.name).trim().slice(0, 2).toUpperCase();
-    const won = result && p.h === result.h && p.a === result.a;
+    const won = isWinner(p, result);
     const winnerClass = won ? ' winner' : '';
     const trophy = won ? ' 🏆' : '';
     return `<div class="lb-item${winnerClass}"><div class="av">${esc(ini)}</div>
@@ -774,6 +841,7 @@ function fillAdmin() {
     $('lockBtn').textContent = match.locked ? 'Unlock Predictions' : 'Lock Predictions';
     $('aPosterUrl').value = match.poster_url || '';
     $('aShowPoster').checked = !!match.show_poster;
+    if ($('aKnockout')) $('aKnockout').checked = !!match.knockout;
     syncAuthToggle();
     // final-result box: label the score inputs with the team names, seed with any
     // already-published result
@@ -782,14 +850,37 @@ function fillAdmin() {
     if (match.live && match.live.home != null) {
       $('resHome').value = match.live.home;
       $('resAway').value = match.live.away;
+      resPensPick = match.live.pens_winner || null;
     }
+    renderResPensPicker();
   }
+}
+
+// admin result box: penalty picker mirrors the predict-side one
+let resPensPick = null;
+function selectResPens(side) { resPensPick = side; renderResPensPicker(); }
+function renderResPensPicker() {
+  const box = $('resPensPicker');
+  if (!box) return;
+  const draw = (parseInt($('resHome').value) || 0) === (parseInt($('resAway').value) || 0);
+  const show = !!match?.knockout && draw;
+  box.classList.toggle('hidden', !show);
+  if (!show) return;
+  $('resPensHome').textContent = match?.home_name || 'Home';
+  $('resPensAway').textContent = match?.away_name || 'Away';
+  $('resPensHome').classList.toggle('active', resPensPick === 'home');
+  $('resPensAway').classList.toggle('active', resPensPick === 'away');
 }
 async function publishResult() {
   const home = parseInt($('resHome').value), away = parseInt($('resAway').value);
   if (isNaN(home) || isNaN(away)) return flash($('adminMsg'), 'Enter both scores.', true);
+  // knockout draw → the advancing team on penalties must be named
+  const pens_winner = (match?.knockout && home === away) ? resPensPick : null;
+  if (match?.knockout && home === away && !pens_winner) {
+    return flash($('adminMsg'), 'Pick which team advanced on penalties.', true);
+  }
   try {
-    await adminPost('result', { home, away });
+    await adminPost('result', { home, away, pens_winner });
     flash($('adminMsg'), `Result published: ${home} - ${away} — winners are now live.`, false);
   } catch (e) { flash($('adminMsg'), e.message, true); }
 }
@@ -827,7 +918,8 @@ async function saveMatch() {
       // local time → ISO (UTC) so the server stores a real kickoff; '' clears it
       kickoff: kick ? new Date(kick).toISOString() : null,
       poster_url: $('aPosterUrl').value,
-      show_poster: $('aShowPoster').checked
+      show_poster: $('aShowPoster').checked,
+      knockout: $('aKnockout') ? $('aKnockout').checked : false
     });
     flash($('adminMsg'), 'Match saved.', false);
   } catch (e) { flash($('adminMsg'), e.message, true); }
@@ -882,12 +974,16 @@ async function applyFdMatch() {
   if (!m.home.name || !m.away.name) return flash($('fdMsg'), 'Teams not decided yet (TBD).', true);
   const dt = new Date(m.utcDate).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const stage = (m.stage || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  // knockout: anything past the group stage is single-elimination (draw → penalties)
+  const rawStage = (m.stage || '').toUpperCase();
+  const knockout = !!rawStage && rawStage !== 'GROUP_STAGE' && rawStage !== 'LEAGUE_STAGE';
   try {
     await adminPost('setMatch', {
       home_name: m.home.name, home_flag: m.home.crest,
       away_name: m.away.name, away_flag: m.away.crest, info: dt, stage,
       kickoff: m.utcDate,          // ISO → auto-lock at this time
-      fd_id: m.id                  // football-data id → enables live score once it starts
+      fd_id: m.id,                 // football-data id → enables live score once it starts
+      knockout
     });
     flash($('fdMsg'), 'Applied: ' + m.home.name + ' vs ' + m.away.name, false);
   } catch (e) { flash($('fdMsg'), e.message, true); }
@@ -896,9 +992,16 @@ async function applyFdMatch() {
 // validate the name field live as the user types
 $('userName').addEventListener('input', validateName);
 
+// admin result score inputs: retoggle the penalty picker on a draw ↔ decisive edit
+['resHome', 'resAway'].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener('input', renderResPensPicker);
+});
+
 // tick every 20s so an open page auto-locks when kickoff passes (no refresh needed)
 setInterval(() => { if (match) renderMatch(); }, 20000);
 
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
-  loadFdMatches, applyFdMatch, signInGoogle, signOutUser, toggleAuthMode, publishResult, clearResult });
+  loadFdMatches, applyFdMatch, signInGoogle, signOutUser, toggleAuthMode, publishResult, clearResult,
+  selectPens, selectResPens });

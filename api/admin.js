@@ -10,7 +10,7 @@ const DEFAULT_MATCH = {
   away_name: 'France', away_flag: 'fr',
   info: 'Dec 14, 2024 • 20:00 GMT', stage: 'Group Stage • Match 42',
   locked: false, requireLogin: false, fd_id: null, live: null,
-  poster_url: '', show_poster: false
+  poster_url: '', show_poster: false, knockout: false
 };
 
 function admin() {
@@ -53,7 +53,8 @@ export default async function handler(req, res) {
         stage: (body.stage || '').trim(),
         locked: false,
         poster_url: (body.poster_url || '').trim(),
-        show_poster: !!body.show_poster
+        show_poster: !!body.show_poster,
+        knockout: !!body.knockout
       };
       // kickoff (ISO string) → Firestore Timestamp for auto-lock; null clears it
       if (body.kickoff) data.kickoff = Timestamp.fromDate(new Date(body.kickoff));
@@ -89,8 +90,13 @@ export default async function handler(req, res) {
       if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0 || home > 99 || away > 99) {
         return res.status(400).json({ error: 'Enter valid home/away scores.' });
       }
+      // penalty shootout: only meaningful on a draw; must name the advancing side
+      let pens_winner = null;
+      if (home === away && (body.pens_winner === 'home' || body.pens_winner === 'away')) {
+        pens_winner = body.pens_winner;
+      }
       await matchRef.set({
-        live: { home, away, status: 'FINISHED', label: 'FULL TIME', ts: Date.now() }
+        live: { home, away, status: 'FINISHED', label: 'FULL TIME', ts: Date.now(), pens_winner }
       }, { merge: true });
       return res.json({ ok: true });
     }
