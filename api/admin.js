@@ -118,8 +118,11 @@ export default async function handler(req, res) {
       return res.json({ ok: true });
     }
     if (action === 'clear') {
+      // clearing predictions starts a fresh round, so drop the manual lock with them —
+      // otherwise a lock from the previous round silently blocks the new one. A kickoff
+      // in the past still auto-locks (that's time, not state).
       await clearPredictions(db);
-      await matchRef.set({ final_winner: null }, { merge: true });  // no preds → no draw
+      await matchRef.set({ final_winner: null, locked: false }, { merge: true });
       return res.json({ ok: true });
     }
     if (action === 'reset') {

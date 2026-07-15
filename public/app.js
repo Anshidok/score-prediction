@@ -671,13 +671,27 @@ let lastPreds = [];   // cached so a match-doc change (e.g. result published) ca
 let fwShownTs = null;       // final_winner.ts already rendered — stops re-animating each snapshot
 let fwBootstrapped = false; // true after the first render: a page load with a winner already
                             // set shows it settled, only a live draw gets the shuffle
-let fwShuffleTimer = null;
+let fwShuffleTimer = null;  // 90ms name cycler
+let fwSettleTimer = null;   // the hold on "0" before the reveal
+function clearFwTimers() {
+  if (fwShuffleTimer) { clearInterval(fwShuffleTimer); fwShuffleTimer = null; }
+  if (fwSettleTimer) { clearTimeout(fwSettleTimer); fwSettleTimer = null; }
+}
 function subscribeConsensus() {
   if (predsUnsub) return;
   predsUnsub = onSnapshot(PREDS, snap => {
     lastPreds = snap.docs.map(d => d.data());
     renderConsensus(lastPreds);
-  }, e => console.error('consensus', e));
+  }, e => {
+    // A failed listener is dead — Firestore never retries it. This is reachable in
+    // normal use: the read is allowed by iHavePredicted(), so clearing predictions
+    // revokes it mid-listen. Drop the handle (and the now-stale cache) so a later
+    // subscribeConsensus() re-attaches instead of returning early — otherwise the
+    // rules opening up again (result published) would never reach this client.
+    console.error('consensus', e);
+    if (predsUnsub) { predsUnsub(); predsUnsub = null; }
+    lastPreds = [];
+  });
 }
 
 function renderGate() {
@@ -733,7 +747,7 @@ function renderFinalWinner(preds, result) {
   if (!fw || !result) {
     card.classList.add('hidden');
     fwShownTs = null;
-    if (fwShuffleTimer) { clearInterval(fwShuffleTimer); fwShuffleTimer = null; }
+    clearFwTimers();
     return;
   }
   if (fwShownTs === fw.ts) return;   // already rendered this draw
@@ -756,18 +770,61 @@ function finalWinnerHTML(fw, shuffling) {
 
 // ~10s of suspense cycling the tied names before settling on the real (server-picked) winner
 const FW_SHUFFLE_MS = 10000;
+const FW_RING_LEN = 2 * Math.PI * 54;   // must match the r=54 circle in .fw-ring
+const FW_ZERO_HOLD_MS = 450;            // beat on "0" before the winner is revealed
+
+function countdownHTML() {
+  return `<div class="fw-countdown">
+    <svg class="fw-ring" viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="fw-ring-track" cx="60" cy="60" r="54"></circle>
+      <circle class="fw-ring-bar" cx="60" cy="60" r="54"></circle>
+    </svg>
+    <div class="fw-num" id="fwNum">10</div>
+  </div>
+  <div id="fwRow"></div>`;
+}
+
 function shuffleToWinner(pool, fw) {
-  if (fwShuffleTimer) { clearInterval(fwShuffleTimer); fwShuffleTimer = null; }
+  clearFwTimers();
   const body = $('finalWinnerBody');
+  body.innerHTML = countdownHTML();
+  const row = $('fwRow'), num = $('fwNum');
+  const bar = body.querySelector('.fw-ring-bar');
+  const cycle = () => {
+    const name = pool[Math.floor(Math.random() * pool.length)];
+    row.innerHTML = finalWinnerHTML({ ...fw, name }, true);
+  };
+  cycle();
+
+  // deplete the ring over the full countdown — one CSS transition, so the 90ms
+  // name cycling below can't restart it. Next frame, or the transition won't run.
+  requestAnimationFrame(() => {
+    bar.style.transitionDuration = FW_SHUFFLE_MS + 'ms';
+    bar.style.strokeDashoffset = FW_RING_LEN;
+  });
+
   const start = Date.now();
+  let shown = 10;
   fwShuffleTimer = setInterval(() => {
-    if (Date.now() - start >= FW_SHUFFLE_MS) {
+    const elapsed = Date.now() - start;
+    if (elapsed >= FW_SHUFFLE_MS) {
       clearInterval(fwShuffleTimer); fwShuffleTimer = null;
-      body.innerHTML = finalWinnerHTML(fw);   // settle on the actual winner
+      num.textContent = '0';
+      num.classList.add('zero');
+      // hold on zero, then settle on the actual winner (countdown drops away)
+      fwSettleTimer = setTimeout(() => {
+        fwSettleTimer = null;
+        body.innerHTML = finalWinnerHTML(fw);
+      }, FW_ZERO_HOLD_MS);
       return;
     }
-    const name = pool[Math.floor(Math.random() * pool.length)];
-    body.innerHTML = finalWinnerHTML({ ...fw, name }, true);
+    const left = Math.ceil((FW_SHUFFLE_MS - elapsed) / 1000);   // 10 → 1
+    if (left !== shown) {
+      shown = left;
+      num.textContent = String(left);
+      num.classList.remove('tick'); void num.offsetWidth; num.classList.add('tick');
+    }
+    cycle();
   }, 90);
 }
 
@@ -1035,8 +1092,8 @@ async function toggleLock() {
   catch (e) { flash($('adminMsg'), e.message, true); }
 }
 async function clearVotes() {
-  if (!confirm('Delete all predictions?')) return;
-  try { await adminPost('clear', {}); flash($('adminMsg'), 'Predictions cleared.', false); }
+  if (!confirm('Delete all predictions and unlock for a fresh round?')) return;
+  try { await adminPost('clear', {}); flash($('adminMsg'), 'Predictions cleared — predictions unlocked.', false); }
   catch (e) { flash($('adminMsg'), e.message, true); }
 }
 async function resetAll() {
