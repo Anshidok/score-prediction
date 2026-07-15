@@ -345,7 +345,7 @@
                   Load Matches
                 </button>
                 <button class="btn" onclick="applyFdMatch()">
-                  Use Selected Match
+                  Load Into Form
                 </button>
               </div>
               <div id="fdMsg" class="msg hidden"></div>
@@ -378,6 +378,20 @@
               <div>
                 <label class="f">KICKOFF (AUTO-LOCK)</label>
                 <input id="aKick" type="datetime-local" />
+              </div>
+              <div>
+                <label class="f">LINKED MATCH ID (football-data)</label>
+                <div class="row-actions">
+                  <input
+                    id="aFdId"
+                    class="txt"
+                    readonly
+                    placeholder="— not linked —"
+                  />
+                  <button class="btn ghost" onclick="setFdLink(null)">
+                    Unlink
+                  </button>
+                </div>
               </div>
             </div>
             <div class="f sub" style="margin-top: 6px">

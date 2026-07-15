@@ -816,10 +816,31 @@ const TEAMS = [
   { name: 'Norway', flag: 'no' }, { name: 'Spain', flag: 'es' }, { name: 'Switzerland', flag: 'ch' }
 ];
 function buildTeamOptions() {
-  const opts = TEAMS.map(t => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('');
+  const opts = TEAMS.map(t =>
+    `<option value="${esc(t.name)}" data-flag="${esc(t.flag)}">${esc(t.name)}</option>`).join('');
   $('aHome').innerHTML = opts; $('aAway').innerHTML = opts;
 }
-function teamByName(n) { return TEAMS.find(t => t.name === n) || { name: n, flag: '' }; }
+
+// select a team by name, adding an option for it when it isn't one of TEAMS
+// (imported names carry their crest URL in data-flag). Only one imported option
+// is kept per select, so repeated imports don't pile up.
+function setTeamOption(selectId, name, flag) {
+  const sel = $(selectId);
+  if (!sel.options.length) buildTeamOptions();
+  let opt = [...sel.options].find(o => o.value === name);
+  if (opt) {
+    if (flag) opt.dataset.flag = flag;
+  } else {
+    sel.querySelector('option[data-imported]')?.remove();
+    opt = new Option(name, name);
+    opt.dataset.flag = flag || '';
+    opt.dataset.imported = '1';
+    sel.add(opt);
+  }
+  sel.value = name;
+}
+// the flag of whatever is currently selected — ISO code or crest URL
+function flagOf(selectId) { return $(selectId).selectedOptions[0]?.dataset.flag || ''; }
 
 async function adminPost(action, payload) {
   const res = await fetch('/api/admin', {
@@ -835,11 +856,12 @@ function fillAdmin() {
   if (!$('aHome').options.length) buildTeamOptions();
   if (!$('fdComp').options.length) loadFdCompetitions();
   if (match) {
-    $('aHome').value = match.home_name;
-    $('aAway').value = match.away_name;
+    setTeamOption('aHome', match.home_name, match.home_flag);
+    setTeamOption('aAway', match.away_name, match.away_flag);
     $('aInfo').value = match.info || '';
     $('aStage').value = match.stage || '';
     $('aKick').value = match.kickoff ? msToLocalInput(kickoffMs()) : '';
+    setFdLink(match.fd_id ?? null);
     $('lockBtn').textContent = match.locked ? 'Unlock Predictions' : 'Lock Predictions';
     $('aPosterUrl').value = match.poster_url || '';
     $('aShowPoster').checked = !!match.show_poster;
@@ -909,16 +931,26 @@ async function toggleAuthMode() {
     flash($('adminMsg'), e.message, true);
   }
 }
+// the single write path for match setup: everything here is whatever is in the
+// form, whether it was typed by hand or loaded from football-data
 async function saveMatch() {
-  const home = teamByName($('aHome').value), away = teamByName($('aAway').value);
-  if (home.name === away.name) return flash($('adminMsg'), 'Home and away must differ.', true);
+  const homeName = $('aHome').value, awayName = $('aAway').value;
+  if (homeName === awayName) return flash($('adminMsg'), 'Home and away must differ.', true);
+  // a linked fd_id only makes sense while both teams are still the imported ones
+  if (pendingFdId != null && !($('aHome').selectedOptions[0]?.dataset.imported &&
+                               $('aAway').selectedOptions[0]?.dataset.imported)) {
+    if (!confirm(`Match ID ${pendingFdId} is still linked, but the teams no longer match the imported ones. ` +
+                 `Save anyway? (Unlink first if this match is now manual.)`)) return;
+  }
   const kick = $('aKick').value;   // '' or local 'YYYY-MM-DDTHH:mm'
   try {
     await adminPost('setMatch', {
-      home_name: home.name, home_flag: home.flag, away_name: away.name, away_flag: away.flag,
+      home_name: homeName, home_flag: flagOf('aHome'),
+      away_name: awayName, away_flag: flagOf('aAway'),
       info: $('aInfo').value, stage: $('aStage').value,
       // local time → ISO (UTC) so the server stores a real kickoff; '' clears it
       kickoff: kick ? new Date(kick).toISOString() : null,
+      fd_id: pendingFdId,
       poster_url: $('aPosterUrl').value,
       show_poster: $('aShowPoster').checked,
       knockout: $('aKnockout') ? $('aKnockout').checked : false
@@ -953,7 +985,14 @@ async function deletePrediction(id) {
 }
 
 // ── football-data import (via /api/fd proxy) ──
+// The API only ever fills the form below — it never writes. saveMatch() does.
 let fdMatches = [];
+let pendingFdId = null;
+// link/unlink the football-data id that enables live result polling
+function setFdLink(id) {
+  pendingFdId = id ?? null;
+  $('aFdId').value = pendingFdId ?? '';
+}
 async function fdGet(qs) {
   const res = await fetch('/api/fd?' + qs);
   const data = await res.json().catch(() => ({}));
@@ -980,7 +1019,9 @@ async function loadFdMatches() {
     flash($('fdMsg'), fdMatches.length + ' match(es) loaded.', false);
   } catch (e) { flash($('fdMsg'), e.message, true); }
 }
-async function applyFdMatch() {
+// load the selected football-data match into the manual form — nothing is saved
+// until Save Match. Poster fields are left alone on purpose.
+function applyFdMatch() {
   const i = parseInt($('fdMatch').value);
   if (isNaN(i) || !fdMatches[i]) return flash($('fdMsg'), 'Pick a match first.', true);
   const m = fdMatches[i];
@@ -990,16 +1031,18 @@ async function applyFdMatch() {
   // knockout: anything past the group stage is single-elimination (draw → penalties)
   const rawStage = (m.stage || '').toUpperCase();
   const knockout = !!rawStage && rawStage !== 'GROUP_STAGE' && rawStage !== 'LEAGUE_STAGE';
-  try {
-    await adminPost('setMatch', {
-      home_name: m.home.name, home_flag: m.home.crest,
-      away_name: m.away.name, away_flag: m.away.crest, info: dt, stage,
-      kickoff: m.utcDate,          // ISO → auto-lock at this time
-      fd_id: m.id,                 // football-data id → enables live score once it starts
-      knockout
-    });
-    flash($('fdMsg'), 'Applied: ' + m.home.name + ' vs ' + m.away.name, false);
-  } catch (e) { flash($('fdMsg'), e.message, true); }
+
+  setTeamOption('aHome', m.home.name, m.home.crest);
+  setTeamOption('aAway', m.away.name, m.away.crest);
+  $('aInfo').value = dt;
+  $('aStage').value = stage;
+  $('aKick').value = msToLocalInput(new Date(m.utcDate).getTime());   // ISO → local input
+  if ($('aKnockout')) $('aKnockout').checked = knockout;
+  setFdLink(m.id);               // football-data id → enables live score once it starts
+  $('resHomeLbl').textContent = m.home.name;
+  $('resAwayLbl').textContent = m.away.name;
+
+  flash($('fdMsg'), `Loaded ${m.home.name} vs ${m.away.name} into the form below — review it, then press Save Match.`, false);
 }
 
 // validate the name field live as the user types
@@ -1016,5 +1059,5 @@ setInterval(() => { if (match) renderMatch(); }, 20000);
 
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
-  deletePrediction, loadFdMatches, applyFdMatch, signInGoogle, signOutUser, toggleAuthMode, publishResult,
-  clearResult, selectPens, selectResPens });
+  deletePrediction, loadFdMatches, applyFdMatch, setFdLink, signInGoogle, signOutUser, toggleAuthMode,
+  publishResult, clearResult, selectPens, selectResPens });
