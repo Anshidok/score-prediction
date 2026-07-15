@@ -614,17 +614,14 @@ function stopFireworks() {
 }
 function startFireworks() {
   if (fw) return;
-  const host = $('winnersHero');
-  if (!host) return;
   const canvas = document.createElement('canvas');
   canvas.className = 'fw-layer';
-  host.appendChild(canvas);
+  document.body.appendChild(canvas);
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   const resize = () => {
-    const w = host.clientWidth, h = host.clientHeight;
-    canvas.width = w * dpr; canvas.height = h * dpr;
-    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+    canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
+    canvas.style.width = innerWidth + 'px'; canvas.style.height = innerHeight + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
   resize();
@@ -632,24 +629,23 @@ function startFireworks() {
 
   const colors = ['#7c5cff', '#a78bfa', '#f0abfc', '#22c55e', '#fbbf24', '#ef4444', '#38bdf8'];
   const particles = [];
-  const G = 0.03;
+  const G = 0.045;
   function burst() {
-    const w = host.clientWidth, h = host.clientHeight;
-    const x = w * (0.15 + Math.random() * 0.7), y = h * (0.15 + Math.random() * 0.5);
+    const x = innerWidth * (0.15 + Math.random() * 0.7), y = innerHeight * (0.15 + Math.random() * 0.45);
     const color = colors[Math.floor(Math.random() * colors.length)];
-    const count = 26 + Math.floor(Math.random() * 16);
+    const count = 46 + Math.floor(Math.random() * 24);
     for (let i = 0; i < count; i++) {
       const ang = (Math.PI * 2 * i) / count + Math.random() * 0.2;
-      const speed = 1.2 + Math.random() * 2.4;
+      const speed = 2 + Math.random() * 4;
       particles.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
-        life: 1, color, size: 1.3 + Math.random() * 1.4 });
+        life: 1, color, size: 1.6 + Math.random() * 1.6 });
     }
   }
   burst();
   const launcher = setInterval(burst, 900);   // keep launching → continuous
 
   const raf0 = requestAnimationFrame(function frame() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
     for (const p of particles) { p.vy += G; p.x += p.vx; p.y += p.vy; p.vx *= 0.99; p.life -= 0.011; }
     for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
     for (const p of particles) {
@@ -755,13 +751,14 @@ function finalWinnerHTML(fw, shuffling) {
     <div class="pt">${fw.h} - ${fw.a}</div></div>`;
 }
 
-// ~2s of suspense cycling the tied names before settling on the real (server-picked) winner
+// ~10s of suspense cycling the tied names before settling on the real (server-picked) winner
+const FW_SHUFFLE_MS = 10000;
 function shuffleToWinner(pool, fw) {
   if (fwShuffleTimer) { clearInterval(fwShuffleTimer); fwShuffleTimer = null; }
   const body = $('finalWinnerBody');
   const start = Date.now();
   fwShuffleTimer = setInterval(() => {
-    if (Date.now() - start >= 2000) {
+    if (Date.now() - start >= FW_SHUFFLE_MS) {
       clearInterval(fwShuffleTimer); fwShuffleTimer = null;
       body.innerHTML = finalWinnerHTML(fw);   // settle on the actual winner
       return;

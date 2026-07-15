@@ -616,9 +616,9 @@ input.txt:focus {
   z-index: 1;
 } /* keep content above the fireworks */
 .fw-layer {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: 9998;
   pointer-events: none;
 }
 /* the admin-drawn single winner — gold, to stand apart from the green winner rows */

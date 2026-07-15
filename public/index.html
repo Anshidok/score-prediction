@@ -270,17 +270,17 @@
     <!-- RESULT VIEW: replaces the predict view once the final result is published -->
     <div id="view-result" class="hidden">
       <div class="result-wrap">
-        <!-- WINNERS (top) -->
+        <!-- FINAL WINNER (top): only appears once the admin draws one from the tied winners -->
+        <div class="card final-winner hidden" id="finalWinnerCard">
+          <h2 class="section">🎯 Final Winner</h2>
+          <div id="finalWinnerBody"></div>
+        </div>
+        <!-- WINNERS (below) -->
         <div class="card winners-hero" id="winnersHero">
           <h2 class="section">
             🏆 Winners <span class="live" id="rvFt">FULL TIME</span>
           </h2>
           <div id="rvWinnersList"></div>
-        </div>
-        <!-- FINAL WINNER: only appears once the admin draws one from the tied winners -->
-        <div class="card final-winner hidden" id="finalWinnerCard">
-          <h2 class="section">🎯 Final Winner</h2>
-          <div id="finalWinnerBody"></div>
         </div>
         <!-- MATCH RESULT (below) -->
         <div class="card result-card">
