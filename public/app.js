@@ -101,7 +101,9 @@ async function handleAuth() {
     // signed out / anonymous-in-Google-mode → reset prediction state.
     // (Admin stays reachable via its key — renderViews handles that.)
     uid = null; myPred = null; revealed = false; loadedForUid = null;
-    if (predsUnsub) { predsUnsub(); predsUnsub = null; }
+    // keep the predictions feed alive once the result is final — the results
+    // screen is public, and the rules allow that read without auth
+    if (predsUnsub && !resultFinal()) { predsUnsub(); predsUnsub = null; }
     resetForm();
     renderGate(); renderMine(); renderNameLock(); renderMatch();
     authResolved = true; maybeReveal();
@@ -145,15 +147,16 @@ function renderAuth() {
 }
 
 // SINGLE authority for what's on screen. The sign-in gate only covers the
-// Predict view in Google mode when unauthorized — it never covers Admin, and in
-// Open mode it is never shown at all.
+// Predict view in Google mode when unauthorized — it never covers Admin, it is
+// never shown in Open mode, and it lifts once the result is final: results are
+// public to everyone, signed in or not.
 function renderViews() {
   const onPredict = currentView === 'predict';
   const authorized = !loginRequired() || isAuthorized(auth.currentUser);
-  const gateNeeded = onPredict && !authorized;
   const final = resultFinal();
+  const gateNeeded = onPredict && !authorized && !final;
   // once the result is final, the predict tab becomes the results screen
-  const showResult = onPredict && authorized && final;
+  const showResult = onPredict && final;
   const showPredict = onPredict && authorized && !final;
   $('authGate').classList.toggle('hidden', !gateNeeded);
   $('view-result').classList.toggle('hidden', !showResult);
