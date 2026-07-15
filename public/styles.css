@@ -115,6 +115,11 @@ nav a.active {
   grid-template-columns: 1fr 320px;
   gap: 20px;
 }
+/* Ensure there is a gap when JS moves these to the main column */
+.wrap > div:first-child > #gateLocked,
+.wrap > div:first-child > #gateOpen {
+  margin-top: 20px;
+}
 @media (max-width: 900px) {
   .wrap {
     grid-template-columns: 1fr;

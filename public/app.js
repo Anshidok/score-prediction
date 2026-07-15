@@ -275,6 +275,20 @@ function renderMatch() {
   // once locked, hide the whole prediction form; lock stays enforced internally (rules + isLocked)
   const pc = $('predictCard');
   if (pc) pc.classList.toggle('hidden', locked);
+
+  // Move prediction results to fill the empty space on the left when locked (which also places it at top on mobile)
+  const gateOpen = $('gateOpen');
+  const gateLocked = $('gateLocked');
+  const mainCol = pc ? pc.parentElement : null;
+  const sideCol = document.querySelector('.side');
+  if (locked && mainCol && gateOpen && gateLocked) {
+    mainCol.appendChild(gateLocked);
+    mainCol.appendChild(gateOpen);
+  } else if (!locked && sideCol && gateOpen && gateLocked) {
+    sideCol.appendChild(gateLocked);
+    sideCol.appendChild(gateOpen);
+  }
+
   $('lockBadge').classList.toggle('hidden', !locked);
   $('lockBadge').textContent = started ? '🔒 LOCKED — MATCH STARTED' : '🔒 PREDICTIONS LOCKED';
   $('submitBtn').disabled = locked;
