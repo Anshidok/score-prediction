@@ -61,7 +61,6 @@ export default async function handler(req, res) {
         away_flag: (body.away_flag || '').trim(),
         info: (body.info || '').trim(),
         stage: (body.stage || '').trim(),
-        locked: false,
         poster_url: (body.poster_url || '').trim(),
         show_poster: !!body.show_poster,
         knockout: !!body.knockout
@@ -69,10 +68,16 @@ export default async function handler(req, res) {
       // kickoff (ISO string) → Firestore Timestamp for auto-lock; null clears it
       if (body.kickoff) data.kickoff = Timestamp.fromDate(new Date(body.kickoff));
       else data.kickoff = null;
-      // football-data id enables live scores; changing the match clears old live data
+      // football-data id enables live scores
       data.fd_id = body.fd_id != null ? body.fd_id : null;
-      data.live = null;
-      data.final_winner = null;   // a new match invalidates any previous draw
+      // setMatch is also how the admin edits details of the *current* match, so only
+      // discard the published result, the lock and any previous draw when it's
+      // genuinely a different match
+      const prev = (await matchRef.get()).data() || {};
+      const isNewMatch = prev.fd_id !== data.fd_id
+        || prev.home_name !== data.home_name
+        || prev.away_name !== data.away_name;
+      if (isNewMatch) { data.live = null; data.locked = false; data.final_winner = null; }
       await matchRef.set(data, { merge: true });
       return res.json({ ok: true });
     }
