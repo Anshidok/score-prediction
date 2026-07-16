@@ -299,6 +299,21 @@
       </div>
     </div>
 
+    <!-- BETWEEN ROUNDS: shown when predictions were cleared and no new match is set yet -->
+    <div class="card hidden awaiting-card" id="awaitingCard"
+         style="width: min(560px, calc(100% - 40px)); margin: 20px auto 0">
+      <div class="awaiting-emoji">⏳</div>
+      <h2>Next match coming soon!</h2>
+      <p>The previous round has ended. A new match will be announced here —
+         check back soon. Results of past rounds are below. 👇</p>
+    </div>
+
+    <!-- PAST ROUNDS: archived matches — winners kept, final winner drawable later -->
+    <div class="card hidden" id="roundsCard" style="width: min(560px, calc(100% - 40px)); margin: 20px auto 26px">
+      <h2 class="section">📼 Previous Rounds</h2>
+      <div id="roundsList"></div>
+    </div>
+
     <!-- ADMIN VIEW -->
     <div id="view-admin" class="hidden">
       <div class="wrap" style="grid-template-columns: 1fr">
@@ -507,6 +522,16 @@
               >
             </div>
             <div id="adminMsg" class="msg hidden"></div>
+          </div>
+
+          <div class="card">
+            <h4>📼 PAST ROUNDS</h4>
+            <div class="f sub" style="margin-bottom: 10px">
+              Finished rounds are archived here when you clear predictions or save a
+              new match. Draw each round's final winner whenever you like — viewers
+              see the draw live under "Previous Rounds".
+            </div>
+            <div id="adminRoundsList"></div>
           </div>
 
           <div class="card">

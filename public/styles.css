@@ -156,6 +156,78 @@ nav a.active {
   object-fit: cover;
   display: block;
 }
+.flag.sm {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  font-size: 15px;
+  flex: none;
+}
+
+/* ── archived past rounds ── */
+.round {
+  padding: 14px 0;
+}
+.round + .round {
+  border-top: 1px solid var(--line);
+}
+.round-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.round-score {
+  font-weight: 800;
+  font-size: 15px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: #eef0f6;
+  white-space: nowrap;
+}
+.round-info {
+  text-align: center;
+  color: var(--muted, #778);
+  font-size: 12px;
+  margin: 4px 0 6px;
+}
+.round-fw {
+  margin-top: 8px;
+}
+/* space between the final winner block and the correct-score list below it */
+.round-fw:not(:empty) {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--line);
+}
+.round-drawn {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.btn.sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* between rounds: predictions cleared, next match not announced yet */
+.awaiting-card {
+  text-align: center;
+  padding: 36px 24px;
+}
+.awaiting-card .awaiting-emoji {
+  font-size: 44px;
+  margin-bottom: 10px;
+}
+.awaiting-card h2 {
+  margin: 0 0 8px;
+}
+.awaiting-card p {
+  color: var(--muted);
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
 .team h3 {
   font-size: 18px;
   font-weight: 800;
@@ -629,15 +701,18 @@ input.txt:focus {
 .final-winner .section {
   margin-bottom: 14px;
 }
-.final-winner .lb-item.winner {
+.final-winner .lb-item.winner,
+.round-fw .lb-item.winner {
   background: #fef3c7;
   border: 1px solid #fcd34d;
 }
 /* mid-shuffle: name is still cycling, so de-emphasise it until it settles */
-.final-winner .lb-item.fw-shuffling {
+.final-winner .lb-item.fw-shuffling,
+.round-fw .lb-item.fw-shuffling {
   opacity: 0.65;
 }
-.final-winner .lb-item.fw-shuffling .nm {
+.final-winner .lb-item.fw-shuffling .nm,
+.round-fw .lb-item.fw-shuffling .nm {
   font-style: italic;
 }
 /* ── draw countdown: 10 → 0 ring, shown only while the draw is running ── */

@@ -75,6 +75,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // archived rounds: written server-side when a finished round is cleared/replaced;
+    // scores were already public when archived, so anyone may read.
+    match /rounds/{roundId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     match /predictions/{userId} {
       // REVEAL GATE: read after you submit, once the result is final, or once the
       // match is over (locked / kickoff passed) so results persist post-match.
