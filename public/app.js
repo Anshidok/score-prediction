@@ -14,6 +14,7 @@ const db = getFirestore(app);
 const MATCH_REF = doc(db, 'config', 'match');
 const PREDS = collection(db, 'predictions');
 const NAMES = collection(db, 'names');   // public registry of taken names (read by all)
+const ROUNDS = collection(db, 'rounds'); // archived past rounds (read by all)
 
 let uid = null;
 let match = null;                 // config/match data
@@ -45,6 +46,18 @@ onSnapshot(NAMES, snap => {
   takenNames = snap.docs.map(d => ({ name: d.data().name, uid: d.id }));
   validateName();
 }, e => console.error('names', e));
+
+// ── archived rounds: past matches whose final winner can be drawn later ──
+let roundsList = [];
+let roundsBootstrapped = false;  // first snapshot renders drawn winners settled, no animation
+const roundShownTs = {};         // roundId → final_winner.ts already rendered/animated
+onSnapshot(ROUNDS, snap => {
+  roundsList = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  renderRounds();
+  renderAdminRounds();
+  roundsBootstrapped = true;
+}, e => console.error('rounds', e));
 
 // ── auth: real Google sign-in → identity is a stable account (one per person) ──
 async function signInGoogle() {
@@ -154,16 +167,22 @@ function renderViews() {
   const onPredict = currentView === 'predict';
   const authorized = !loginRequired() || isAuthorized(auth.currentUser);
   const final = resultFinal();
-  const gateNeeded = onPredict && !authorized && !final;
+  // between rounds (predictions cleared, no new match yet): hide the stale match
+  // and the prediction form, show the "next match soon" screen instead
+  const awaiting = match?.awaiting_next === true;
+  const gateNeeded = onPredict && !authorized && !final && !awaiting;
   // once the result is final, the predict tab becomes the results screen
-  const showResult = onPredict && final;
-  const showPredict = onPredict && authorized && !final;
+  const showResult = onPredict && final && !awaiting;
+  const showPredict = onPredict && authorized && !final && !awaiting;
   $('authGate').classList.toggle('hidden', !gateNeeded);
   $('view-result').classList.toggle('hidden', !showResult);
   $('view-predict').classList.toggle('hidden', !showPredict);
+  $('awaitingCard')?.classList.toggle('hidden', !(onPredict && awaiting));
   $('view-admin').classList.toggle('hidden', currentView !== 'admin');
   $('nav-predict').classList.toggle('active', currentView === 'predict');
   $('nav-admin').classList.toggle('active', currentView === 'admin');
+  // archived rounds ride along under the predict/results screen (public data)
+  $('roundsCard')?.classList.toggle('hidden', currentView !== 'predict' || !roundsList.length);
   manageFireworks();   // run fireworks only while the results screen is visible
 }
 
@@ -685,11 +704,16 @@ let lastPreds = [];   // cached so a match-doc change (e.g. result published) ca
 let fwShownTs = null;       // final_winner.ts already rendered — stops re-animating each snapshot
 let fwBootstrapped = false; // true after the first render: a page load with a winner already
                             // set shows it settled, only a live draw gets the shuffle
-let fwShuffleTimer = null;  // 90ms name cycler
-let fwSettleTimer = null;   // the hold on "0" before the reveal
-function clearFwTimers() {
-  if (fwShuffleTimer) { clearInterval(fwShuffleTimer); fwShuffleTimer = null; }
-  if (fwSettleTimer) { clearTimeout(fwSettleTimer); fwSettleTimer = null; }
+// each FW animation (current match + every archived round) owns its own timers,
+// keyed by the element it renders into. A single pair of globals would let a
+// second draw's clearFwTimers() kill the first's countdown mid-flight — the ring
+// freezes at whatever number it was on and "Drawing…" never resolves.
+const fwTimers = new Map();   // body element -> { shuffle, settle }
+function clearFwTimers(body) {
+  // shuffle is a self-scheduling setTimeout (was an interval); clear both kinds to be safe
+  const kill = t => { if (t) { clearInterval(t.shuffle); clearTimeout(t.shuffle); clearTimeout(t.settle); } };
+  if (body === undefined) { fwTimers.forEach(kill); fwTimers.clear(); return; }
+  kill(fwTimers.get(body)); fwTimers.delete(body);
 }
 function subscribeConsensus() {
   if (predsUnsub) return;
@@ -761,7 +785,7 @@ function renderFinalWinner(preds, result) {
   if (!fw || !result) {
     card.classList.add('hidden');
     fwShownTs = null;
-    clearFwTimers();
+    clearFwTimers($('finalWinnerBody'));
     return;
   }
   if (fwShownTs === fw.ts) return;   // already rendered this draw
@@ -782,10 +806,22 @@ function finalWinnerHTML(fw, shuffling) {
     <div class="pt">${fw.h} - ${fw.a}</div></div>`;
 }
 
-// ~10s of suspense cycling the tied names before settling on the real (server-picked) winner
-const FW_SHUFFLE_MS = 10000;
+// ~20s of suspense cycling the tied names before settling on the real (server-picked) winner
+const FW_SHUFFLE_MS = 20000;
 const FW_RING_LEN = 2 * Math.PI * 54;   // must match the r=54 circle in .fw-ring
-const FW_ZERO_HOLD_MS = 450;            // beat on "0" before the winner is revealed
+const FW_ZERO_HOLD_MS = 300;            // short beat on "0" before the final ticks
+const FW_FAST_MIN_MS = 80;              // reel cadence at the start (fastest)
+const FW_FAST_MAX_MS = 240;            // reel cadence as the ring reaches 0 (already slowing)
+const FW_FAST_RAMP_POW = 2.4;           // >1: stays fast, then eases slower late in the countdown
+const FW_DECEL_FACTOR = 1.26;           // each final tick ~26% slower than the last
+const FW_DECEL_MIN_STEPS = 6;           // final slow ticks after the ramp (the ramp already slowed it)
+const FW_DECEL_MAX_MS = 1000;           // cap so a big pool can't crawl forever
+const FW_WINNER_HOLD_MS = 650;          // pause on the winner name before settled render
+
+const FW_ROW = 56;          // px — reel row height; keep in sync with --fw-row in styles.css
+const FW_REEL_BUFFER = 4;   // max items kept in the strip (3 visible + 1 sliding in)
+const prefersReduce = () =>
+  !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
 function countdownHTML() {
   return `<div class="fw-countdown">
@@ -793,22 +829,48 @@ function countdownHTML() {
       <circle class="fw-ring-track" cx="60" cy="60" r="54"></circle>
       <circle class="fw-ring-bar" cx="60" cy="60" r="54"></circle>
     </svg>
-    <div class="fw-num" id="fwNum">10</div>
+    <div class="fw-num">20</div>
   </div>
-  <div id="fwRow"></div>`;
+  <div class="fw-reel-window"><div class="fw-reel"></div></div>`;
 }
 
-function shuffleToWinner(pool, fw) {
-  clearFwTimers();
-  const body = $('finalWinnerBody');
+// one downward step of the reel: prepend `name` at the top, then slide the whole
+// strip down a row so the new name enters from above and the current name drops a
+// slot. The centre row (index 1) ends up showing whatever was prepended on the
+// PREVIOUS call — the natural slot-machine lag (next name peeks in above, previous
+// leaves below). `jump` bounces the centre name for the final reveal.
+function reelPush(reel, fw, name, slideMs, easing, jump) {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = finalWinnerHTML({ ...fw, name }, true);
+  reel.prepend(wrap.firstElementChild);
+  if (prefersReduce()) {                       // no motion: keep only the newest, centred
+    while (reel.children.length > 1) reel.lastElementChild.remove();
+    return;
+  }
+  reel.style.transition = 'none';
+  reel.style.transform = `translateY(${-FW_ROW}px)`;
+  void reel.offsetWidth;                        // commit the pre-slide position
+  reel.style.transition = `transform ${slideMs}ms ${easing}`;
+  reel.style.transform = 'translateY(0)';
+  while (reel.children.length > FW_REEL_BUFFER) reel.lastElementChild.remove();
+  if (jump) {
+    const centre = reel.children[1];            // the name now sliding into the centre
+    if (centre) { centre.classList.remove('fw-jump'); void centre.offsetWidth; centre.classList.add('fw-jump'); }
+  }
+}
+
+// body: container the animation renders into — the current match's card by
+// default, or an archived round's fw-body when drawing a past round
+function shuffleToWinner(pool, fw, body = $('finalWinnerBody')) {
+  clearFwTimers(body);
   body.innerHTML = countdownHTML();
-  const row = $('fwRow'), num = $('fwNum');
+  const reel = body.querySelector('.fw-reel'), num = body.querySelector('.fw-num');
   const bar = body.querySelector('.fw-ring-bar');
-  const cycle = () => {
-    const name = pool[Math.floor(Math.random() * pool.length)];
-    row.innerHTML = finalWinnerHTML({ ...fw, name }, true);
-  };
-  cycle();
+  const timers = { shuffle: null, settle: null };
+  fwTimers.set(body, timers);
+  const rand = () => pool[Math.floor(Math.random() * pool.length)];
+  // prime the 3-row window so it's full on the first frame
+  for (let k = 0; k < 3; k++) reelPush(reel, fw, rand(), 0, 'linear', false);
 
   // deplete the ring over the full countdown — one CSS transition, so the 90ms
   // name cycling below can't restart it. Next frame, or the transition won't run.
@@ -817,29 +879,156 @@ function shuffleToWinner(pool, fw) {
     bar.style.strokeDashoffset = FW_RING_LEN;
   });
 
+  // self-scheduling tick: the delay eases from FW_FAST_MIN_MS up to FW_FAST_MAX_MS
+  // as the ring nears 0, so the reel is already slowing when the finale takes over —
+  // no abrupt gear-change. Each slide fills its own gap, so the motion stays smooth.
   const start = Date.now();
-  let shown = 10;
-  fwShuffleTimer = setInterval(() => {
+  const total = Math.round(FW_SHUFFLE_MS / 1000);
+  let shown = total; num.textContent = String(total);
+  const tick = () => {
     const elapsed = Date.now() - start;
+    const p = Math.min(elapsed / FW_SHUFFLE_MS, 1);
+    const delay = FW_FAST_MIN_MS + (FW_FAST_MAX_MS - FW_FAST_MIN_MS) * p ** FW_FAST_RAMP_POW;
     if (elapsed >= FW_SHUFFLE_MS) {
-      clearInterval(fwShuffleTimer); fwShuffleTimer = null;
       num.textContent = '0';
       num.classList.add('zero');
-      // hold on zero, then settle on the actual winner (countdown drops away)
-      fwSettleTimer = setTimeout(() => {
-        fwSettleTimer = null;
-        body.innerHTML = finalWinnerHTML(fw);
-      }, FW_ZERO_HOLD_MS);
+      // continue the slow-down straight from the ramp's end speed → no speed jump
+      timers.settle = setTimeout(() => decelerateToWinner(pool, fw, body, delay), FW_ZERO_HOLD_MS);
       return;
     }
-    const left = Math.ceil((FW_SHUFFLE_MS - elapsed) / 1000);   // 10 → 1
+    const left = Math.ceil((FW_SHUFFLE_MS - elapsed) / 1000);
     if (left !== shown) {
       shown = left;
       num.textContent = String(left);
       num.classList.remove('tick'); void num.offsetWidth; num.classList.add('tick');
     }
-    cycle();
-  }, 90);
+    reelPush(reel, fw, rand(), delay * 0.95, 'linear', false);
+    timers.shuffle = setTimeout(tick, delay);
+  };
+  tick();
+}
+
+// slow-motion finale: step through the pool one name at a time, each slide slower
+// than the last, choreographed so the winner walks into the centre — then a final
+// push bounces it home (the "jump"). Landing math unchanged from the old version.
+function decelerateToWinner(pool, fw, body = $('finalWinnerBody'), initDelay = FW_FAST_MAX_MS) {
+  const timers = fwTimers.get(body) || {};
+  fwTimers.set(body, timers);
+  const reel = body.querySelector('.fw-reel');
+  const settle = () => {
+    body.innerHTML = finalWinnerHTML(fw);
+    fwTimers.delete(body);
+  };
+  if (pool.length < 2 || !reel) { settle(); return; }
+
+  const wi = Math.max(0, pool.indexOf(fw.name));
+  const start = Math.floor(Math.random() * pool.length);
+  // walk sequentially from a random start; add just enough steps past the
+  // minimum so the walk's last name is exactly the winner's slot
+  const steps = FW_DECEL_MIN_STEPS +
+    ((wi - start - FW_DECEL_MIN_STEPS) % pool.length + pool.length) % pool.length;
+  const seq = [];
+  for (let i = 0; i <= steps; i++) seq.push(pool[(start + i) % pool.length]);   // ends on fw.name
+  // one extra push slides the winner from the top-peek into the highlighted centre;
+  // it carries the jump. Reduced motion shows the newest name directly, so skip it.
+  if (!prefersReduce()) seq.push(pool[(start + steps + 1) % pool.length]);
+
+  const last = seq.length - 1;
+  const base = Math.max(initDelay, FW_FAST_MIN_MS);   // start where the ramp left off
+  const play = (i) => {
+    const slideMs = Math.min(base * FW_DECEL_FACTOR ** i, FW_DECEL_MAX_MS);
+    const jump = i === last;
+    reelPush(reel, fw, seq[i], slideMs, jump ? 'cubic-bezier(.2,1.5,.5,1)' : 'ease-out', jump);
+    if (jump) { timers.settle = setTimeout(settle, FW_WINNER_HOLD_MS); return; }
+    timers.settle = setTimeout(() => play(i + 1), slideMs);
+  };
+  play(0);
+}
+
+// ── archived rounds: winners of past matches + their (deferred) final-winner draws ──
+function roundScoreLabel(r) {
+  let s = `${r.score.h} - ${r.score.a}`;
+  if (r.score.pens_winner) {
+    s += ` · ${r.score.pens_winner === 'home' ? r.home_name : r.away_name} on pens`;
+  }
+  return s;
+}
+
+function renderRounds() {
+  const card = $('roundsCard'), list = $('roundsList');
+  if (!card || !list) return;
+  card.classList.toggle('hidden', currentView !== 'predict' || !roundsList.length);
+  // the innerHTML rebuild below detaches any round body mid-animation; stop those
+  // intervals first so they don't keep ticking against orphaned nodes. Only round
+  // bodies (inside this list) — never the current match's finalWinnerBody.
+  fwTimers.forEach((_t, el) => { if (list.contains(el)) clearFwTimers(el); });
+  if (!roundsList.length) { list.innerHTML = ''; return; }
+
+  list.innerHTML = roundsList.map(r => {
+    const winners = r.winners || [];
+    const poolHTML = winners.length
+      ? winners.map(w => {
+          const ini = String(w.name).trim().slice(0, 2).toUpperCase();
+          return `<div class="lb-item winner"><div class="av">${esc(ini)}</div>
+            <div class="nm">${esc(w.name)}<small>Correct score 🏆</small></div>
+            <div class="pt">${w.h} - ${w.a}</div></div>`;
+        }).join('')
+      : `<div class="empty">No one nailed the exact score.</div>`;
+    // drawn winners render settled here; a draw that lands live is animated below
+    const fw = r.final_winner;
+    const fwHTML = fw && roundShownTs[r.id] === fw.ts ? finalWinnerHTML(fw)
+      : fw ? '' // placeholder — filled (settled or animated) right after this render
+      : winners.length ? `<div class="empty">🎯 Final winner not drawn yet.</div>` : '';
+    return `<div class="round">
+      <div class="round-head">
+        <span class="flag sm">${flagMarkup(r.home_flag)}</span>
+        <b>${esc(r.home_name)}</b>
+        <span class="round-score">${esc(roundScoreLabel(r))}</span>
+        <b>${esc(r.away_name)}</b>
+        <span class="flag sm">${flagMarkup(r.away_flag)}</span>
+      </div>
+      ${r.info ? `<div class="round-info">${esc(r.info)}</div>` : ''}
+      <div class="round-fw" id="roundFw-${esc(r.id)}">${fwHTML}</div>
+      ${poolHTML}
+    </div>`;
+  }).join('');
+
+  // reveal freshly drawn winners: animate draws that land while we're watching,
+  // render settled on first load (mirrors fwBootstrapped for the current match)
+  for (const r of roundsList) {
+    const fw = r.final_winner;
+    if (!fw || roundShownTs[r.id] === fw.ts) continue;
+    roundShownTs[r.id] = fw.ts;
+    const body = $('roundFw-' + r.id);
+    if (!body) continue;
+    const pool = (r.winners || []).map(w => w.name);
+    if (roundsBootstrapped && pool.length > 1) shuffleToWinner(pool, fw, body);
+    else body.innerHTML = finalWinnerHTML(fw);
+  }
+}
+
+// admin panel list of archived rounds: draw / delete per round
+function renderAdminRounds() {
+  const list = $('adminRoundsList');
+  if (!list) return;
+  if (!roundsList.length) {
+    list.innerHTML = `<div class="empty">No archived rounds yet. Clearing predictions after a published result archives that round here.</div>`;
+    return;
+  }
+  list.innerHTML = roundsList.map(r => {
+    const winners = r.winners || [];
+    const when = r.ts ? new Date(r.ts).toLocaleDateString() : '';
+    const status = r.final_winner
+      ? `<span class="round-drawn">🎯 ${esc(r.final_winner.name)}</span>`
+      : winners.length
+        ? `<button class="btn sm" onclick="drawRoundWinner('${esc(r.id)}')">🎯 Draw</button>`
+        : `<span class="sub">no winners</span>`;
+    return `<div class="lb-item"><div class="nm">
+        ${esc(r.home_name)} ${r.score.h} - ${r.score.a} ${esc(r.away_name)}
+        <small>${esc(when)} · ${winners.length} in draw pool</small></div>
+      ${status}
+      <button class="lb-del" title="Delete round" onclick="deleteRound('${esc(r.id)}')">✕</button></div>`;
+  }).join('');
 }
 
 // markup for the exact-score winners (or an empty-state message)
@@ -1051,6 +1240,21 @@ async function drawFinalWinner() {
     flash($('adminMsg'), `Final winner: ${final_winner.name} (from ${final_winner.pool}).`, false);
   } catch (e) { flash($('adminMsg'), e.message, true); }
 }
+// draw the deferred final winner of an ARCHIVED round (server-side pick, like drawFinalWinner)
+async function drawRoundWinner(roundId) {
+  if (!confirm('Draw a random final winner for this past round? This is final.')) return;
+  try {
+    const { final_winner } = await adminPost('drawRoundWinner', { roundId });
+    flash($('adminMsg'), `Round final winner: ${final_winner.name} (from ${final_winner.pool}).`, false);
+  } catch (e) { flash($('adminMsg'), e.message, true); }
+}
+async function deleteRound(roundId) {
+  if (!confirm('Delete this archived round? Its winners and draw are removed for everyone.')) return;
+  try {
+    await adminPost('deleteRound', { roundId });
+    flash($('adminMsg'), 'Round deleted.', false);
+  } catch (e) { flash($('adminMsg'), e.message, true); }
+}
 async function clearResult() {
   if (!confirm('Clear the published result? (winners will be hidden again)')) return;
   try {
@@ -1106,7 +1310,7 @@ async function toggleLock() {
   catch (e) { flash($('adminMsg'), e.message, true); }
 }
 async function clearVotes() {
-  if (!confirm('Delete all predictions and unlock for a fresh round?')) return;
+  if (!confirm('Start a fresh round? All predictions are deleted — a finished result (and its winners) is archived to Past Rounds first.')) return;
   try { await adminPost('clear', {}); flash($('adminMsg'), 'Predictions cleared — predictions unlocked.', false); }
   catch (e) { flash($('adminMsg'), e.message, true); }
 }
@@ -1203,4 +1407,4 @@ setInterval(() => { if (match) renderMatch(); }, 20000);
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
   deletePrediction, loadFdMatches, applyFdMatch, setFdLink, signInGoogle, signOutUser, toggleAuthMode,
-  publishResult, clearResult, drawFinalWinner, selectPens, selectResPens });
+  publishResult, clearResult, drawFinalWinner, drawRoundWinner, deleteRound, selectPens, selectResPens });
