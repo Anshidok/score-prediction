@@ -696,7 +696,8 @@ let fwBootstrapped = false; // true after the first render: a page load with a w
 // freezes at whatever number it was on and "Drawing…" never resolves.
 const fwTimers = new Map();   // body element -> { shuffle, settle }
 function clearFwTimers(body) {
-  const kill = t => { if (t) { clearInterval(t.shuffle); clearTimeout(t.settle); } };
+  // shuffle is a self-scheduling setTimeout (was an interval); clear both kinds to be safe
+  const kill = t => { if (t) { clearInterval(t.shuffle); clearTimeout(t.shuffle); clearTimeout(t.settle); } };
   if (body === undefined) { fwTimers.forEach(kill); fwTimers.clear(); return; }
   kill(fwTimers.get(body)); fwTimers.delete(body);
 }
@@ -794,11 +795,19 @@ function finalWinnerHTML(fw, shuffling) {
 // ~20s of suspense cycling the tied names before settling on the real (server-picked) winner
 const FW_SHUFFLE_MS = 20000;
 const FW_RING_LEN = 2 * Math.PI * 54;   // must match the r=54 circle in .fw-ring
-const FW_ZERO_HOLD_MS = 450;            // beat on "0" before the slow-down begins
-const FW_DECEL_START_MS = 110;          // first slow-tick delay
-const FW_DECEL_FACTOR = 1.28;           // each slow tick ~28% slower than the last
-const FW_DECEL_MIN_STEPS = 10;          // at least this many slow ticks (~3s total)
+const FW_ZERO_HOLD_MS = 300;            // short beat on "0" before the final ticks
+const FW_FAST_MIN_MS = 80;              // reel cadence at the start (fastest)
+const FW_FAST_MAX_MS = 240;            // reel cadence as the ring reaches 0 (already slowing)
+const FW_FAST_RAMP_POW = 2.4;           // >1: stays fast, then eases slower late in the countdown
+const FW_DECEL_FACTOR = 1.26;           // each final tick ~26% slower than the last
+const FW_DECEL_MIN_STEPS = 6;           // final slow ticks after the ramp (the ramp already slowed it)
+const FW_DECEL_MAX_MS = 1000;           // cap so a big pool can't crawl forever
 const FW_WINNER_HOLD_MS = 650;          // pause on the winner name before settled render
+
+const FW_ROW = 56;          // px — reel row height; keep in sync with --fw-row in styles.css
+const FW_REEL_BUFFER = 4;   // max items kept in the strip (3 visible + 1 sliding in)
+const prefersReduce = () =>
+  !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
 function countdownHTML() {
   return `<div class="fw-countdown">
@@ -808,7 +817,32 @@ function countdownHTML() {
     </svg>
     <div class="fw-num">20</div>
   </div>
-  <div class="fw-row"></div>`;
+  <div class="fw-reel-window"><div class="fw-reel"></div></div>`;
+}
+
+// one downward step of the reel: prepend `name` at the top, then slide the whole
+// strip down a row so the new name enters from above and the current name drops a
+// slot. The centre row (index 1) ends up showing whatever was prepended on the
+// PREVIOUS call — the natural slot-machine lag (next name peeks in above, previous
+// leaves below). `jump` bounces the centre name for the final reveal.
+function reelPush(reel, fw, name, slideMs, easing, jump) {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = finalWinnerHTML({ ...fw, name }, true);
+  reel.prepend(wrap.firstElementChild);
+  if (prefersReduce()) {                       // no motion: keep only the newest, centred
+    while (reel.children.length > 1) reel.lastElementChild.remove();
+    return;
+  }
+  reel.style.transition = 'none';
+  reel.style.transform = `translateY(${-FW_ROW}px)`;
+  void reel.offsetWidth;                        // commit the pre-slide position
+  reel.style.transition = `transform ${slideMs}ms ${easing}`;
+  reel.style.transform = 'translateY(0)';
+  while (reel.children.length > FW_REEL_BUFFER) reel.lastElementChild.remove();
+  if (jump) {
+    const centre = reel.children[1];            // the name now sliding into the centre
+    if (centre) { centre.classList.remove('fw-jump'); void centre.offsetWidth; centre.classList.add('fw-jump'); }
+  }
 }
 
 // body: container the animation renders into — the current match's card by
@@ -816,15 +850,13 @@ function countdownHTML() {
 function shuffleToWinner(pool, fw, body = $('finalWinnerBody')) {
   clearFwTimers(body);
   body.innerHTML = countdownHTML();
-  const row = body.querySelector('.fw-row'), num = body.querySelector('.fw-num');
+  const reel = body.querySelector('.fw-reel'), num = body.querySelector('.fw-num');
   const bar = body.querySelector('.fw-ring-bar');
   const timers = { shuffle: null, settle: null };
   fwTimers.set(body, timers);
-  const cycle = () => {
-    const name = pool[Math.floor(Math.random() * pool.length)];
-    row.innerHTML = finalWinnerHTML({ ...fw, name }, true);
-  };
-  cycle();
+  const rand = () => pool[Math.floor(Math.random() * pool.length)];
+  // prime the 3-row window so it's full on the first frame
+  for (let k = 0; k < 3; k++) reelPush(reel, fw, rand(), 0, 'linear', false);
 
   // deplete the ring over the full countdown — one CSS transition, so the 90ms
   // name cycling below can't restart it. Next frame, or the transition won't run.
@@ -833,56 +865,70 @@ function shuffleToWinner(pool, fw, body = $('finalWinnerBody')) {
     bar.style.strokeDashoffset = FW_RING_LEN;
   });
 
+  // self-scheduling tick: the delay eases from FW_FAST_MIN_MS up to FW_FAST_MAX_MS
+  // as the ring nears 0, so the reel is already slowing when the finale takes over —
+  // no abrupt gear-change. Each slide fills its own gap, so the motion stays smooth.
   const start = Date.now();
-  let shown = 20;
-  timers.shuffle = setInterval(() => {
+  const total = Math.round(FW_SHUFFLE_MS / 1000);
+  let shown = total; num.textContent = String(total);
+  const tick = () => {
     const elapsed = Date.now() - start;
+    const p = Math.min(elapsed / FW_SHUFFLE_MS, 1);
+    const delay = FW_FAST_MIN_MS + (FW_FAST_MAX_MS - FW_FAST_MIN_MS) * p ** FW_FAST_RAMP_POW;
     if (elapsed >= FW_SHUFFLE_MS) {
-      clearInterval(timers.shuffle); timers.shuffle = null;
       num.textContent = '0';
       num.classList.add('zero');
-      // hold on zero, then decelerate the shuffle until it lands on the winner
-      timers.settle = setTimeout(() => decelerateToWinner(pool, fw, body), FW_ZERO_HOLD_MS);
+      // continue the slow-down straight from the ramp's end speed → no speed jump
+      timers.settle = setTimeout(() => decelerateToWinner(pool, fw, body, delay), FW_ZERO_HOLD_MS);
       return;
     }
-    const left = Math.ceil((FW_SHUFFLE_MS - elapsed) / 1000);   // 20 → 1
+    const left = Math.ceil((FW_SHUFFLE_MS - elapsed) / 1000);
     if (left !== shown) {
       shown = left;
       num.textContent = String(left);
       num.classList.remove('tick'); void num.offsetWidth; num.classList.add('tick');
     }
-    cycle();
-  }, 90);
+    reelPush(reel, fw, rand(), delay * 0.95, 'linear', false);
+    timers.shuffle = setTimeout(tick, delay);
+  };
+  tick();
 }
 
-// slow-motion finale: step through the pool one name at a time, each tick slower
-// than the last, choreographed so the final tick lands on the server-picked winner
-function decelerateToWinner(pool, fw, body = $('finalWinnerBody')) {
+// slow-motion finale: step through the pool one name at a time, each slide slower
+// than the last, choreographed so the winner walks into the centre — then a final
+// push bounces it home (the "jump"). Landing math unchanged from the old version.
+function decelerateToWinner(pool, fw, body = $('finalWinnerBody'), initDelay = FW_FAST_MAX_MS) {
   const timers = fwTimers.get(body) || {};
   fwTimers.set(body, timers);
-  const row = body.querySelector('.fw-row');
+  const reel = body.querySelector('.fw-reel');
   const settle = () => {
     body.innerHTML = finalWinnerHTML(fw);
     fwTimers.delete(body);
   };
-  if (pool.length < 2 || !row) { settle(); return; }
+  if (pool.length < 2 || !reel) { settle(); return; }
 
   const wi = Math.max(0, pool.indexOf(fw.name));
   const start = Math.floor(Math.random() * pool.length);
   // walk sequentially from a random start; add just enough steps past the
-  // minimum so the last step is exactly the winner's slot
+  // minimum so the walk's last name is exactly the winner's slot
   const steps = FW_DECEL_MIN_STEPS +
     ((wi - start - FW_DECEL_MIN_STEPS) % pool.length + pool.length) % pool.length;
+  const seq = [];
+  for (let i = 0; i <= steps; i++) seq.push(pool[(start + i) % pool.length]);   // ends on fw.name
+  // one extra push slides the winner from the top-peek into the highlighted centre;
+  // it carries the jump. Reduced motion shows the newest name directly, so skip it.
+  if (!prefersReduce()) seq.push(pool[(start + steps + 1) % pool.length]);
 
-  const step = (i) => {
-    row.innerHTML = finalWinnerHTML({ ...fw, name: pool[(start + i) % pool.length] }, true);
-    if (i >= steps) {
-      timers.settle = setTimeout(settle, FW_WINNER_HOLD_MS);
-      return;
-    }
-    timers.settle = setTimeout(() => step(i + 1), FW_DECEL_START_MS * FW_DECEL_FACTOR ** i);
+  const last = seq.length - 1;
+  const base = Math.max(initDelay, FW_FAST_MIN_MS);   // start where the ramp left off
+  const play = (i) => {
+    const slideMs = Math.min(base * FW_DECEL_FACTOR ** i, FW_DECEL_MAX_MS);
+    const jump = i === last;
+    reelPush(reel, fw, seq[i], slideMs, jump ? 'cubic-bezier(.2,1.5,.5,1)' : 'ease-out', jump);
+    if (jump) { timers.settle = setTimeout(settle, FW_WINNER_HOLD_MS); return; }
+    timers.settle = setTimeout(() => play(i + 1), slideMs);
   };
-  step(0);
+  play(0);
 }
 
 // ── archived rounds: winners of past matches + their (deferred) final-winner draws ──

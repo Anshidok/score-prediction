@@ -706,14 +706,57 @@ input.txt:focus {
   background: #fef3c7;
   border: 1px solid #fcd34d;
 }
-/* mid-shuffle: name is still cycling, so de-emphasise it until it settles */
-.final-winner .lb-item.fw-shuffling,
-.round-fw .lb-item.fw-shuffling {
-  opacity: 0.65;
-}
+/* mid-shuffle: name is still cycling, so italicise it until it settles */
 .final-winner .lb-item.fw-shuffling .nm,
 .round-fw .lb-item.fw-shuffling .nm {
   font-style: italic;
+}
+
+/* ── slot-machine reel: names scroll down, dim neighbours peek above/below ── */
+:root { --fw-row: 56px; }   /* reel row height — keep in sync with FW_ROW in app.js */
+.fw-reel-window {
+  position: relative;
+  height: calc(var(--fw-row) * 3);
+  overflow: hidden;
+  /* fade the top & bottom rows so the centre reads as the active slot */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 30%, #000 70%, transparent 100%);
+          mask-image: linear-gradient(180deg, transparent 0, #000 30%, #000 70%, transparent 100%);
+}
+.fw-reel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  transform: translateY(0);
+  will-change: transform;
+}
+.fw-reel .lb-item {
+  height: var(--fw-row);
+  margin: 0;
+  padding: 8px 16px;
+  overflow: hidden;
+}
+.fw-reel .lb-item .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* dimming comes from the window mask, not per-item, so the centre stays crisp */
+.fw-reel .lb-item.fw-shuffling { opacity: 1; }
+/* frame the centre slot */
+.fw-reel-window::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--fw-row);
+  height: var(--fw-row);
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px #fcd34d;
+  pointer-events: none;
+}
+.fw-jump { animation: fwJump 0.5s cubic-bezier(.2,1.5,.5,1); }
+@keyframes fwJump {
+  0%   { transform: translateY(0) scale(1); }
+  35%  { transform: translateY(-7px) scale(1.06); }
+  70%  { transform: translateY(2px) scale(0.99); }
+  100% { transform: translateY(0) scale(1); }
 }
 /* ── draw countdown: 10 → 0 ring, shown only while the draw is running ── */
 .fw-countdown {
@@ -766,6 +809,11 @@ input.txt:focus {
 @media (prefers-reduced-motion: reduce) {
   .fw-ring-bar { transition: none; }
   .fw-num.tick, .fw-num.zero { animation: none; }
+  /* no scrolling reel — collapse to a single centred row, name swaps in place */
+  .fw-reel { transition: none !important; transform: none !important; }
+  .fw-jump { animation: none; }
+  .fw-reel-window { height: var(--fw-row); }
+  .fw-reel-window::after { top: 0; }
 }
 .result-card .rv-match {
   display: flex;
