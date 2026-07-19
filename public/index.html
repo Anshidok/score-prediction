@@ -86,7 +86,13 @@
     <div id="view-predict" class="hidden">
       <div class="wrap">
         <div>
-          <div class="card" style="border-left: 4px solid var(--brand)">
+          <div class="card hero-match" id="heroMatch">
+            <!-- shown only for the final (JS adds .is-final from match.stage) -->
+            <div class="hero-crest" id="heroCrest">
+              <span class="rule"></span>
+              <span class="cup">🏆</span>
+              <span class="rule"></span>
+            </div>
             <div class="match">
               <div class="team">
                 <div class="flag" id="homeFlag">🏠</div>

@@ -181,6 +181,193 @@ nav a.active {
   flex: none;
 }
 
+/* ── hero match card: the headline fixture at the top of the predict screen ──
+   Everything here is scoped under .hero-match so the shared .team/.flag/.pill
+   pieces keep their light styling everywhere else in the app. */
+.hero-match {
+  --gold: #f5c451;
+  --gold-soft: #ffe6a3;
+  position: relative;
+  overflow: hidden;
+  padding: 24px 22px 22px;
+  color: #fff;
+  border: 1px solid rgba(245, 196, 81, 0.28);
+  background:
+    radial-gradient(120% 150% at 50% -25%, #2a3556 0%, #161e33 55%, #0c1120 100%);
+  box-shadow:
+    0 18px 44px rgba(10, 16, 32, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+/* gold hairline along the top edge */
+.hero-match::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--gold) 25%,
+    var(--gold-soft) 50%,
+    var(--gold) 75%,
+    transparent
+  );
+}
+/* slow light sweep across the card */
+.hero-match::after {
+  content: "";
+  position: absolute;
+  inset: -60% -30%;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 42%,
+    rgba(255, 255, 255, 0.07) 50%,
+    transparent 58%
+  );
+  animation: heroSweep 7s ease-in-out infinite;
+}
+@keyframes heroSweep {
+  0%,
+  100% {
+    transform: translateX(-40%);
+  }
+  50% {
+    transform: translateX(40%);
+  }
+}
+.hero-match > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* trophy crest — only for the final */
+.hero-crest {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.hero-match.is-final .hero-crest {
+  display: flex;
+}
+.hero-crest .rule {
+  height: 1px;
+  width: min(120px, 22%);
+  background: linear-gradient(90deg, transparent, rgba(245, 196, 81, 0.6));
+}
+.hero-crest .rule:last-child {
+  background: linear-gradient(90deg, rgba(245, 196, 81, 0.6), transparent);
+}
+.hero-crest .cup {
+  font-size: 22px;
+  line-height: 1;
+  filter: drop-shadow(0 0 10px rgba(245, 196, 81, 0.55));
+}
+
+/* teams */
+.hero-match .flag {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  box-shadow:
+    0 0 0 2px rgba(245, 196, 81, 0.75),
+    0 0 22px rgba(245, 196, 81, 0.22),
+    0 10px 22px rgba(0, 0, 0, 0.45);
+}
+.hero-match .team {
+  width: 140px;
+}
+.hero-match .team h3 {
+  font-size: 20px;
+  letter-spacing: -0.2px;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+.hero-match .team .lbl {
+  color: rgba(255, 255, 255, 0.42);
+  margin-top: 4px;
+}
+
+/* centre column */
+.hero-match .mid {
+  color: rgba(255, 255, 255, 0.55);
+}
+.hero-match .pill {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+}
+.hero-match .vs {
+  font-size: 34px;
+  margin: 10px 0 6px;
+  letter-spacing: 2px;
+  background: linear-gradient(180deg, var(--gold-soft), var(--gold));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero-match .sub {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.hero-match .live-score {
+  color: #fff;
+  font-size: 40px;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+.hero-match .live-status {
+  color: rgba(255, 255, 255, 0.6);
+}
+.hero-match .live-status.is-live {
+  color: #ff6b6b;
+}
+.hero-match .kickoff-timer {
+  margin-top: 12px;
+  padding: 6px 14px;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-soft);
+  background: rgba(245, 196, 81, 0.1);
+  border: 1px solid rgba(245, 196, 81, 0.3);
+}
+.hero-match .lockbadge {
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #ff8a8a;
+}
+
+@media (max-width: 560px) {
+  .hero-match {
+    padding: 20px 12px 18px;
+  }
+  .hero-match .team {
+    width: 96px;
+  }
+  .hero-match .flag {
+    width: 52px;
+    height: 52px;
+  }
+  .hero-match .team h3 {
+    font-size: 16px;
+  }
+  .hero-match .vs {
+    font-size: 26px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-match::after {
+    animation: none;
+  }
+}
+
 /* ── archived past rounds ── */
 .round {
   padding: 14px 0;

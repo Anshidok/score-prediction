@@ -284,6 +284,9 @@ function renderMatch() {
   $('awayFlag').innerHTML = flagMarkup(away.flag);
   $('matchInfo').textContent = match.info || 'Match';
   $('matchStage').textContent = match.stage || '';
+  // the final gets the full trophy treatment; earlier rounds keep the plain hero
+  const isFinal = /final/i.test(match.stage || '') && !/semi|quarter/i.test(match.stage || '');
+  $('heroMatch').classList.toggle('is-final', isFinal);
   $('homeCap').textContent = home.name.toUpperCase() + ' SCORE';
   $('awayCap').textContent = away.name.toUpperCase() + ' SCORE';
   $('winLbl').textContent = home.name + ' Win';
