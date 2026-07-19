@@ -616,7 +616,13 @@ function drawPaper(ctx, p, alpha) {
 }
 
 // ── confetti drop on submit ──
-function celebrate() {
+// opts scales the show: submitting a prediction gets the modest default, the
+// final-winner reveal gets the long, dense version.
+function celebrate(opts = {}) {
+  const {
+    duration = 4500, shots = 40, curtain0 = 60,
+    waves = 5, waveSize = 28, every = 320, reCannon = false
+  } = opts;
   const canvas = document.createElement('canvas');
   canvas.className = 'fx-canvas';
   document.body.appendChild(canvas);
@@ -637,7 +643,7 @@ function celebrate() {
   function cannon(fromLeft) {
     const x = fromLeft ? -10 : innerWidth + 10;
     const y = innerHeight * (0.75 + Math.random() * 0.15);
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < shots; i++) {
       // aim up and inward: ~-57° from the left, its mirror from the right
       const ang = (fromLeft ? -1 : -Math.PI + 1) + (Math.random() - 0.5) * 0.7;
       const speed = 9 + Math.random() * 9;
@@ -652,15 +658,16 @@ function celebrate() {
     }
   }
 
-  cannon(true); cannon(false); curtain(60);
-  let waves = 0;
+  cannon(true); cannon(false); curtain(curtain0);
+  let fired = 0;
   const launcher = setInterval(() => {
-    curtain(28);
-    if (++waves >= 5) clearInterval(launcher);
-  }, 320);
+    if (reCannon) cannon(fired % 2 === 0);
+    curtain(waveSize);
+    if (++fired >= waves) clearInterval(launcher);
+  }, every);
 
   const start = performance.now();
-  const DURATION = 4500;
+  const DURATION = duration;
   (function frame(now) {
     const elapsed = now - start;
     ctx.clearRect(0, 0, innerWidth, innerHeight);
@@ -968,6 +975,11 @@ function decelerateToWinner(pool, fw, body = $('finalWinnerBody'), initDelay = F
   const settle = () => {
     body.innerHTML = finalWinnerHTML(fw);
     fwTimers.delete(body);
+    // the winner is in — full-page confetti, longer and denser than the submit one
+    if (!prefersReduce()) {
+      celebrate({ duration: 8000, shots: 70, curtain0: 110,
+                  waves: 14, waveSize: 42, every: 420, reCannon: true });
+    }
   };
   if (pool.length < 2 || !reel) { settle(); return; }
 

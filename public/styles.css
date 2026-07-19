@@ -3,12 +3,12 @@
   /* poster palette: Spain crimson/gold → dark navy → Argentina sky blue */
   --bg-grad: linear-gradient(
     135deg,
-    #fbe4e7 0%,
-    #f9eeda 18%,
-    #f4f6f9 40%,
-    #e7edf6 58%,
-    #dcebf8 78%,
-    #cfe3f5 100%
+    #f8d2d8 0%,
+    #f6e4c4 18%,
+    #eef1f7 40%,
+    #dbe5f3 58%,
+    #c8dff4 78%,
+    #b3d3f1 100%
   );
   --card: #fff;
   --ink: #1a1d29;
