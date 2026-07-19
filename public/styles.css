@@ -924,7 +924,7 @@ input.txt:focus {
 /* a correct-score winner row */
 .winners-hero .lb-item.winner {
   position: relative;
-  padding: 14px 16px 14px 22px;
+  padding: 14px 16px;
   border: 1px solid #a7f3d0;
   border-radius: 14px;
   background: linear-gradient(135deg, #f0fdfa, #dcfce7 58%, #f0fdf4);
@@ -934,17 +934,6 @@ input.txt:focus {
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease;
-}
-/* emerald accent stripe down the leading edge */
-.winners-hero .lb-item.winner::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 4px;
-  border-radius: 0 4px 4px 0;
-  background: linear-gradient(180deg, #6ee7b7, #10b981);
 }
 .winners-hero .lb-item.winner:hover {
   transform: translateY(-2px);

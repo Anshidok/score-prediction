@@ -935,7 +935,18 @@ function shuffleToWinner(pool, fw, body = $('finalWinnerBody')) {
   const bar = body.querySelector('.fw-ring-bar');
   const timers = { shuffle: null, settle: null };
   fwTimers.set(body, timers);
-  const rand = () => pool[Math.floor(Math.random() * pool.length)];
+  // Pick a random name that is never the one just shown. A plain random pick
+  // stutters — with a 2-name pool it repeats half the time (user2, user2,
+  // user1, user1) and stops reading as a spinning reel. Indexes rather than
+  // names so an unlikely duplicate name can't loop forever.
+  let prevIdx = Math.floor(Math.random() * pool.length);
+  const rand = () => {
+    if (pool.length < 2) return pool[0];
+    let i = Math.floor(Math.random() * (pool.length - 1));
+    if (i >= prevIdx) i++;        // fold the previous index out of the range
+    prevIdx = i;
+    return pool[i];
+  };
   // prime the 3-row window so it's full on the first frame
   for (let k = 0; k < 3; k++) reelPush(reel, fw, rand(), 0, 'linear', false);
 
@@ -960,7 +971,9 @@ function shuffleToWinner(pool, fw, body = $('finalWinnerBody')) {
       num.textContent = '0';
       num.classList.add('zero');
       // continue the slow-down straight from the ramp's end speed → no speed jump
-      timers.settle = setTimeout(() => decelerateToWinner(pool, fw, body, delay), FW_ZERO_HOLD_MS);
+      // hand the last-shown index over so the finale doesn't repeat it at the seam
+      timers.settle = setTimeout(
+        () => decelerateToWinner(pool, fw, body, delay, prevIdx), FW_ZERO_HOLD_MS);
       return;
     }
     const left = Math.ceil((FW_SHUFFLE_MS - elapsed) / 1000);
@@ -978,7 +991,9 @@ function shuffleToWinner(pool, fw, body = $('finalWinnerBody')) {
 // slow-motion finale: step through the pool one name at a time, each slide slower
 // than the last, choreographed so the winner walks into the centre — then a final
 // push bounces it home (the "jump"). Landing math unchanged from the old version.
-function decelerateToWinner(pool, fw, body = $('finalWinnerBody'), initDelay = FW_FAST_MAX_MS) {
+// afterIdx: index the fast phase left on screen, so the walk doesn't start on it
+function decelerateToWinner(pool, fw, body = $('finalWinnerBody'),
+                            initDelay = FW_FAST_MAX_MS, afterIdx = -1) {
   const timers = fwTimers.get(body) || {};
   fwTimers.set(body, timers);
   const reel = body.querySelector('.fw-reel');
@@ -997,7 +1012,8 @@ function decelerateToWinner(pool, fw, body = $('finalWinnerBody'), initDelay = F
   if (pool.length < 2 || !reel) { settle(); return; }
 
   const wi = Math.max(0, pool.indexOf(fw.name));
-  const start = Math.floor(Math.random() * pool.length);
+  let start = Math.floor(Math.random() * pool.length);
+  if (start === afterIdx) start = (start + 1) % pool.length;   // no repeat at the seam
   // walk sequentially from a random start; add just enough steps past the
   // minimum so the walk's last name is exactly the winner's slot
   const steps = FW_DECEL_MIN_STEPS +
