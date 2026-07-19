@@ -183,7 +183,7 @@ function renderViews() {
   $('nav-admin').classList.toggle('active', currentView === 'admin');
   // archived rounds ride along under the predict/results screen (public data)
   $('roundsCard')?.classList.toggle('hidden', currentView !== 'predict' || !roundsList.length);
-  manageFireworks();   // run fireworks only while the results screen is visible
+  manageConfetti();   // run confetti only while the results screen is visible
 }
 
 // ── reveal the page once match details + flag images are ready AND auth resolved ──
@@ -569,7 +569,50 @@ async function submitPred() {
 
 function flash(el, txt, err) { el.textContent = txt; el.className = 'msg ' + (err ? 'err' : 'ok'); }
 
-// ── fireworks celebration on submit ──
+// ── paper confetti ──
+const CONFETTI_COLORS = ['#7c5cff', '#a78bfa', '#f0abfc', '#22c55e', '#fbbf24', '#ef4444', '#38bdf8'];
+
+// one rectangular scrap of paper. `flutter` spins it edge-on and back so it
+// reads as a 3D piece tumbling rather than a flat sprite.
+function paperPiece(x, y, vx, vy, scale) {
+  const s = scale || 1;
+  return {
+    x, y, vx, vy,
+    w: (5 + Math.random() * 5) * s,
+    h: (8 + Math.random() * 6) * s,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    rot: Math.random() * Math.PI * 2,
+    spin: (Math.random() - 0.5) * 0.22,
+    flutter: Math.random() * Math.PI * 2,
+    flutterRate: 0.05 + Math.random() * 0.07,
+    sway: 0.5 + Math.random() * 1.1,      // sideways drift amplitude
+    ribbon: Math.random() < 0.3           // a few long thin streamers for variety
+  };
+}
+
+function stepPaper(p, gravity) {
+  p.flutter += p.flutterRate;
+  p.vy = Math.min(p.vy + gravity, 3.2);   // air drag → terminal velocity, no plummeting
+  p.vx *= 0.985;
+  p.x += p.vx + Math.sin(p.flutter) * p.sway;
+  p.y += p.vy;
+  p.rot += p.spin;
+}
+
+function drawPaper(ctx, p, alpha) {
+  const h = p.ribbon ? p.h * 1.9 : p.h;
+  const w = p.ribbon ? p.w * 0.5 : p.w;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.rot);
+  ctx.scale(1, Math.cos(p.flutter));      // the tumble
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = p.color;
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+// ── confetti drop on submit ──
 function celebrate() {
   const canvas = document.createElement('canvas');
   canvas.className = 'fx-canvas';
@@ -584,117 +627,121 @@ function celebrate() {
   resize();
   addEventListener('resize', resize);
 
-  const colors = ['#7c5cff', '#a78bfa', '#f0abfc', '#22c55e', '#fbbf24', '#ef4444', '#38bdf8'];
-  const particles = [];
-  const G = 0.045;
+  const pieces = [];
+  const G = 0.055;
 
-  function burst(x, y) {
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    const count = 46 + Math.floor(Math.random() * 24);
-    for (let i = 0; i < count; i++) {
-      const ang = (Math.PI * 2 * i) / count + Math.random() * 0.2;
-      const speed = 2 + Math.random() * 4;
-      particles.push({
-        x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
-        life: 1, color, size: 1.6 + Math.random() * 1.6
-      });
+  // two cannons firing inward from the bottom corners
+  function cannon(fromLeft) {
+    const x = fromLeft ? -10 : innerWidth + 10;
+    const y = innerHeight * (0.75 + Math.random() * 0.15);
+    for (let i = 0; i < 40; i++) {
+      // aim up and inward: ~-57° from the left, its mirror from the right
+      const ang = (fromLeft ? -1 : -Math.PI + 1) + (Math.random() - 0.5) * 0.7;
+      const speed = 9 + Math.random() * 9;
+      pieces.push(paperPiece(x, y, Math.cos(ang) * speed, Math.sin(ang) * speed, 1.1));
+    }
+  }
+  // and a curtain of scraps drifting down from above the fold
+  function curtain(n) {
+    for (let i = 0; i < n; i++) {
+      pieces.push(paperPiece(Math.random() * innerWidth, -20 - Math.random() * innerHeight * 0.4,
+                             (Math.random() - 0.5) * 1.5, 1 + Math.random() * 2));
     }
   }
 
-  // launch a few staggered bursts across the top-ish area
-  let launched = 0;
-  const total = 6;
+  cannon(true); cannon(false); curtain(60);
+  let waves = 0;
   const launcher = setInterval(() => {
-    burst(innerWidth * (0.2 + Math.random() * 0.6), innerHeight * (0.2 + Math.random() * 0.35));
-    if (++launched >= total) clearInterval(launcher);
-  }, 220);
+    curtain(28);
+    if (++waves >= 5) clearInterval(launcher);
+  }, 320);
 
   const start = performance.now();
+  const DURATION = 4500;
   (function frame(now) {
+    const elapsed = now - start;
     ctx.clearRect(0, 0, innerWidth, innerHeight);
-    for (const p of particles) {
-      p.vy += G; p.x += p.vx; p.y += p.vy; p.vx *= 0.99; p.life -= 0.012;
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const p = pieces[i];
+      stepPaper(p, G);
+      if (p.y > innerHeight + 40) pieces.splice(i, 1);
     }
-    for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
-    for (const p of particles) {
-      ctx.globalAlpha = Math.max(0, p.life);
-      ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // fade the whole layer out over the last second instead of per-piece decay,
+    // so pieces stay solid paper the whole way down
+    const alpha = Math.min(1, Math.max(0, (DURATION + 900 - elapsed) / 900));
+    for (const p of pieces) drawPaper(ctx, p, alpha);
     ctx.globalAlpha = 1;
-    if (now - start < 4500 || particles.length) {
+    if (elapsed < DURATION + 900 && (pieces.length || elapsed < DURATION)) {
       requestAnimationFrame(frame);
     } else {
+      clearInterval(launcher);
       removeEventListener('resize', resize);
       canvas.remove();
     }
   })(start);
 }
 
-// ── continuous fireworks inside the winners card while the results screen is up ──
-let fw = null;                 // active fireworks state, or null
+// ── continuous confetti inside the winners card while the results screen is up ──
+let confetti = null;           // active confetti state, or null
 let hasWinners = false;        // set by renderConsensus: are there exact-score winners?
-function manageFireworks() {
+function manageConfetti() {
   const on = !$('view-result').classList.contains('hidden') && hasWinners;
-  if (on) startFireworks(); else stopFireworks();
+  if (on) startConfetti(); else stopConfetti();
 }
-function stopFireworks() {
-  if (!fw) return;
-  cancelAnimationFrame(fw.raf);
-  clearInterval(fw.launcher);
-  removeEventListener('resize', fw.resize);
-  fw.canvas.remove();
-  fw = null;
+function stopConfetti() {
+  if (!confetti) return;
+  cancelAnimationFrame(confetti.raf);
+  clearInterval(confetti.launcher);
+  removeEventListener('resize', confetti.resize);
+  confetti.canvas.remove();
+  confetti = null;
 }
-function startFireworks() {
-  if (fw) return;
+function startConfetti() {
+  if (confetti) return;
+  const host = $('winnersHero');
+  if (!host) return;
   const canvas = document.createElement('canvas');
   canvas.className = 'fw-layer';
-  document.body.appendChild(canvas);
+  host.appendChild(canvas);
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   const resize = () => {
-    canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
-    canvas.style.width = innerWidth + 'px'; canvas.style.height = innerHeight + 'px';
+    const w = host.clientWidth, h = host.clientHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
   resize();
   addEventListener('resize', resize);
 
-  const colors = ['#7c5cff', '#a78bfa', '#f0abfc', '#22c55e', '#fbbf24', '#ef4444', '#38bdf8'];
-  const particles = [];
-  const G = 0.045;
-  function burst() {
-    const x = innerWidth * (0.15 + Math.random() * 0.7), y = innerHeight * (0.15 + Math.random() * 0.45);
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    const count = 46 + Math.floor(Math.random() * 24);
-    for (let i = 0; i < count; i++) {
-      const ang = (Math.PI * 2 * i) / count + Math.random() * 0.2;
-      const speed = 2 + Math.random() * 4;
-      particles.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
-        life: 1, color, size: 1.6 + Math.random() * 1.6 });
+  const pieces = [];
+  const G = 0.018;
+  function drop(n) {
+    const w = host.clientWidth;
+    for (let i = 0; i < n; i++) {
+      pieces.push(paperPiece(Math.random() * w, -12 - Math.random() * 40,
+                             (Math.random() - 0.5) * 1.2, 0.4 + Math.random() * 1.1, 0.8));
     }
   }
-  burst();
-  const launcher = setInterval(burst, 900);   // keep launching → continuous
+  drop(14);
+  const launcher = setInterval(() => drop(5), 420);   // keep seeding → continuous fall
 
   const raf0 = requestAnimationFrame(function frame() {
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
-    for (const p of particles) { p.vy += G; p.x += p.vx; p.y += p.vy; p.vx *= 0.99; p.life -= 0.011; }
-    for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
-    for (const p of particles) {
-      ctx.globalAlpha = Math.max(0, p.life);
-      ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fill();
+    const h = host.clientHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const p = pieces[i];
+      stepPaper(p, G);
+      if (p.y > h + 20) pieces.splice(i, 1);
+    }
+    for (const p of pieces) {
+      // soften the last stretch of the fall so pieces don't pop out at the edge
+      drawPaper(ctx, p, Math.min(1, Math.max(0.15, (h - p.y) / 40)));
     }
     ctx.globalAlpha = 1;
-    if (fw) fw.raf = requestAnimationFrame(frame);
+    if (confetti) confetti.raf = requestAnimationFrame(frame);
   });
-  fw = { canvas, resize, launcher, raf: raf0 };
+  confetti = { canvas, resize, launcher, raf: raf0 };
 }
 
 // ── consensus: realtime over predictions collection (rules allow read only after you submit) ──
@@ -768,9 +815,9 @@ function renderConsensus(preds) {
 
   renderFinalWinner(preds, result);
 
-  // fireworks only when someone actually won
+  // confetti only when someone actually won
   hasWinners = !!result && preds.some(p => isWinner(p, result));
-  manageFireworks();
+  manageConfetti();
 
   $('lbList').innerHTML = predListHTML(preds, 'No predictions yet. Be first!', result);
   fwBootstrapped = true;
