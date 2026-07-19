@@ -691,11 +691,16 @@ function celebrate(opts = {}) {
   })(start);
 }
 
-// ── continuous confetti inside the winners card while the results screen is up ──
+// ── continuous confetti inside the final winner card, once the draw has landed ──
+// Deliberately not during the 20s countdown: the draw stays undecorated so the
+// burst in settle() reads as the payoff.
 let confetti = null;           // active confetti state, or null
 let hasWinners = false;        // set by renderConsensus: are there exact-score winners?
+let fwSettled = false;         // final winner drawn AND finished animating
 function manageConfetti() {
-  const on = !$('view-result').classList.contains('hidden') && hasWinners;
+  const card = $('finalWinnerCard');
+  const on = !$('view-result').classList.contains('hidden') &&
+             hasWinners && fwSettled && card && !card.classList.contains('hidden');
   if (on) startConfetti(); else stopConfetti();
 }
 function stopConfetti() {
@@ -708,7 +713,7 @@ function stopConfetti() {
 }
 function startConfetti() {
   if (confetti) return;
-  const host = $('winnersHero');
+  const host = $('finalWinnerCard');
   if (!host) return;
   const canvas = document.createElement('canvas');
   canvas.className = 'fw-layer';
@@ -843,6 +848,8 @@ function renderFinalWinner(preds, result) {
     card.classList.add('hidden');
     fwShownTs = null;
     clearFwTimers($('finalWinnerBody'));
+    fwSettled = false;
+    manageConfetti();
     return;
   }
   if (fwShownTs === fw.ts) return;   // already rendered this draw
@@ -851,8 +858,11 @@ function renderFinalWinner(preds, result) {
 
   // shuffle through the tied names, but only for a draw that lands while we're watching
   const pool = preds.filter(p => isWinner(p, result)).map(p => p.name);
-  if (fwBootstrapped && pool.length > 1) shuffleToWinner(pool, fw);
+  const willShuffle = fwBootstrapped && pool.length > 1;
+  fwSettled = !willShuffle;          // a shuffling draw settles later, in settle()
+  if (willShuffle) shuffleToWinner(pool, fw);
   else $('finalWinnerBody').innerHTML = finalWinnerHTML(fw);
+  manageConfetti();
 }
 
 function finalWinnerHTML(fw, shuffling) {
@@ -980,6 +990,9 @@ function decelerateToWinner(pool, fw, body = $('finalWinnerBody'), initDelay = F
       celebrate({ duration: 8000, shots: 70, curtain0: 110,
                   waves: 14, waveSize: 42, every: 420, reCannon: true });
     }
+    // ...then the ambient fall settles into the final winner card. Current match
+    // only — drawing an archived round must not restart it.
+    if (body.id === 'finalWinnerBody') { fwSettled = true; manageConfetti(); }
   };
   if (pool.length < 2 || !reel) { settle(); return; }
 

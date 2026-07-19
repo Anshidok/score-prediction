@@ -907,10 +907,12 @@ input.txt:focus {
   justify-content: space-between;
   color: #047857;
 }
-.winners-hero > * {
+/* keep content above the confetti — see the .final-winner note below for why
+   the canvas has to be excluded rather than matched by a bare `> *` */
+.winners-hero > *:not(.fw-layer) {
   position: relative;
   z-index: 1;
-} /* keep content above the confetti */
+}
 /* FULL TIME badge — lifted off the card instead of a flat pill */
 .winners-hero .live {
   background: #fff;
@@ -1027,7 +1029,11 @@ input.txt:focus {
     transform: translateX(38%);
   }
 }
-.final-winner > * {
+/* :not(.fw-layer) is load-bearing — the confetti canvas is a direct child, and
+   this rule sits after .fw-layer at equal specificity, so a bare `> *` would
+   override its position:absolute and drop the canvas into normal flow, where
+   its inline height stretches the card. */
+.final-winner > *:not(.fw-layer) {
   position: relative;
   z-index: 1;
 }
