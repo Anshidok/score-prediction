@@ -1,5 +1,15 @@
 :root {
   --bg: #f4f6f9;
+  /* poster palette: Spain crimson/gold → dark navy → Argentina sky blue */
+  --bg-grad: linear-gradient(
+    135deg,
+    #fbe4e7 0%,
+    #f9eeda 18%,
+    #f4f6f9 40%,
+    #e7edf6 58%,
+    #dcebf8 78%,
+    #cfe3f5 100%
+  );
   --card: #fff;
   --ink: #1a1d29;
   --muted: #8a90a2;
@@ -22,6 +32,8 @@ body {
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
   background: var(--bg);
+  background-image: var(--bg-grad);
+  background-attachment: fixed;
   color: var(--ink);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -614,7 +626,7 @@ input.txt:focus {
 .winners-hero > * {
   position: relative;
   z-index: 1;
-} /* keep content above the fireworks */
+} /* keep content above the confetti */
 .fw-layer {
   position: absolute;
   inset: 0;
@@ -858,6 +870,7 @@ input.txt:focus {
   inset: 0;
   z-index: 9999;
   background: var(--bg);
+  background-image: var(--bg-grad);
   display: flex;
   flex-direction: column;
   align-items: center;
