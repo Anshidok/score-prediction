@@ -878,19 +878,101 @@ input.txt:focus {
   flex-direction: column;
   gap: 20px;
 }
+/* ══ results screen champion cards ══════════════════════════════════════════
+   Light-only treatment: mint for the correct-score winners, gold for the drawn
+   champion. Scoped to .winners-hero / .final-winner / .round-fw so the
+   all-predictions and admin lists keep their plain row styling. */
+
 .winners-hero {
   position: relative;
   overflow: hidden;
   text-align: left;
+  border: 1px solid #bbf7d0;
+  background: radial-gradient(120% 90% at 50% -25%, #ecfdf5 0%, #fff 62%);
+  box-shadow:
+    0 14px 34px rgba(16, 185, 129, 0.13),
+    0 2px 5px rgba(16, 185, 129, 0.06);
+}
+/* emerald hairline along the top edge */
+.winners-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  z-index: 2;
+  background: linear-gradient(90deg, #a7f3d0, #34d399 45%, #6ee7b7, #a7f3d0);
 }
 .winners-hero .section {
   margin-bottom: 14px;
   justify-content: space-between;
+  color: #047857;
 }
 .winners-hero > * {
   position: relative;
   z-index: 1;
 } /* keep content above the confetti */
+/* FULL TIME badge — lifted off the card instead of a flat pill */
+.winners-hero .live {
+  background: #fff;
+  border: 1px solid #86efac;
+  color: #059669;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.18);
+}
+
+/* a correct-score winner row */
+.winners-hero .lb-item.winner {
+  position: relative;
+  padding: 14px 16px 14px 22px;
+  border: 1px solid #a7f3d0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f0fdfa, #dcfce7 58%, #f0fdf4);
+  box-shadow:
+    0 4px 14px rgba(16, 185, 129, 0.14),
+    inset 0 1px 0 #fff;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+/* emerald accent stripe down the leading edge */
+.winners-hero .lb-item.winner::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, #6ee7b7, #10b981);
+}
+.winners-hero .lb-item.winner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(16, 185, 129, 0.22);
+}
+.winners-hero .lb-item.winner .av {
+  width: 36px;
+  height: 36px;
+  color: #fff;
+  background: linear-gradient(145deg, #34d399, #059669);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.85),
+    0 3px 8px rgba(5, 150, 105, 0.32);
+}
+.winners-hero .lb-item.winner .nm {
+  font-size: 14px;
+  color: #064e3b;
+}
+.winners-hero .lb-item.winner .nm small {
+  color: #059669;
+}
+.winners-hero .lb-item.winner .pt {
+  flex: none;
+  font-size: 14px;
+  color: #047857;
+  background: #fff;
+  border: 1px solid #a7f3d0;
+  border-radius: 999px;
+  padding: 5px 12px;
+}
 .fw-layer {
   position: absolute;
   inset: 0;
@@ -899,16 +981,139 @@ input.txt:focus {
 }
 /* the admin-drawn single winner — gold, to stand apart from the green winner rows */
 .final-winner {
-  border: 1px solid #fcd34d;
-  background: linear-gradient(180deg, #fffbeb, #fff);
+  position: relative;
+  overflow: hidden;
+  /* gradient border: the fill paints to the padding box, gold to the border box */
+  border: 2px solid transparent;
+  background:
+    linear-gradient(165deg, #fffdf6 0%, #fff8e6 48%, #fffefb 100%) padding-box,
+    linear-gradient(135deg, #fde68a, #f59e0b 38%, #fcd34d 66%, #fef3c7) border-box;
+  box-shadow:
+    0 16px 38px rgba(217, 148, 12, 0.17),
+    0 2px 6px rgba(217, 148, 12, 0.08);
+}
+/* warm glow pooling behind the winner */
+.final-winner::before {
+  content: "";
+  position: absolute;
+  top: -45%;
+  left: 50%;
+  width: 340px;
+  height: 340px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(252, 211, 77, 0.38), transparent 70%);
+}
+/* slow white sheen travelling across the gold */
+.final-winner::after {
+  content: "";
+  position: absolute;
+  inset: -50% -20%;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 44%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 56%
+  );
+  animation: goldSheen 5.5s ease-in-out infinite;
+}
+@keyframes goldSheen {
+  0%,
+  100% {
+    transform: translateX(-38%);
+  }
+  50% {
+    transform: translateX(38%);
+  }
+}
+.final-winner > * {
+  position: relative;
+  z-index: 1;
 }
 .final-winner .section {
   margin-bottom: 14px;
+  color: #b45309;
 }
+/* colour applies to every gold row, the reel's included */
 .final-winner .lb-item.winner,
 .round-fw .lb-item.winner {
-  background: #fef3c7;
+  background: linear-gradient(135deg, #fff6d9, #ffe9a8 55%, #fff4cf);
   border: 1px solid #fcd34d;
+}
+/* the settled champion row. Everything below is held off .fw-shuffling: mid-draw
+   the reel sets its own fixed row height, and re-sizing those rows would make
+   the slot-machine window jump. */
+.final-winner .lb-item.winner:not(.fw-shuffling),
+.round-fw .lb-item.winner:not(.fw-shuffling) {
+  position: relative;
+  padding: 15px 16px;
+  border-radius: 14px;
+  box-shadow:
+    0 6px 16px rgba(217, 148, 12, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  animation: winnerPop 0.5s cubic-bezier(0.2, 1.5, 0.5, 1);
+}
+@keyframes winnerPop {
+  from {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+/* crown pinned to the champion row */
+.final-winner .lb-item.winner:not(.fw-shuffling)::after {
+  content: "👑";
+  position: absolute;
+  top: -9px;
+  left: 4px;
+  font-size: 15px;
+  transform: rotate(-18deg);
+}
+.final-winner .lb-item.winner:not(.fw-shuffling) .av,
+.round-fw .lb-item.winner:not(.fw-shuffling) .av {
+  width: 38px;
+  height: 38px;
+  font-size: 13px;
+  color: #fff;
+  background: linear-gradient(145deg, #fbbf24, #f59e0b);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.8),
+    0 4px 10px rgba(217, 148, 12, 0.38);
+}
+.final-winner .lb-item.winner:not(.fw-shuffling) .nm,
+.round-fw .lb-item.winner:not(.fw-shuffling) .nm {
+  font-size: 15px;
+  color: #78350f;
+}
+.final-winner .lb-item.winner:not(.fw-shuffling) .nm small,
+.round-fw .lb-item.winner:not(.fw-shuffling) .nm small {
+  color: #a16207;
+}
+.final-winner .lb-item.winner:not(.fw-shuffling) .pt,
+.round-fw .lb-item.winner:not(.fw-shuffling) .pt {
+  flex: none;
+  font-size: 14px;
+  color: #92400e;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .final-winner::after {
+    animation: none;
+  }
+  .final-winner .lb-item.winner:not(.fw-shuffling),
+  .round-fw .lb-item.winner:not(.fw-shuffling) {
+    animation: none;
+  }
+  .winners-hero .lb-item.winner:hover {
+    transform: none;
+  }
 }
 /* mid-shuffle: name is still cycling, so italicise it until it settles */
 .final-winner .lb-item.fw-shuffling .nm,
