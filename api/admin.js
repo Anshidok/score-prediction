@@ -10,7 +10,8 @@ const DEFAULT_MATCH = {
   away_name: 'France', away_flag: 'fr',
   info: 'Dec 14, 2024 • 20:00 GMT', stage: 'Group Stage • Match 42',
   locked: false, requireLogin: false, fd_id: null, live: null,
-  poster_url: '', show_poster: false, knockout: false, final_winner: null
+  poster_url: '', show_poster: false, knockout: false, final_winner: null,
+  awaiting_next: false
 };
 
 // the tied winners for a published result. Mirrors the client's isWinner()/pensDecided()
@@ -44,6 +45,29 @@ async function clearPredictions(db) {
   await clearCollection(db, 'names');
 }
 
+// snapshot a finished round (teams, score, tied-winner pool, any drawn winner) into
+// the `rounds` collection so its final winner can still be drawn after the match
+// slot is reused. Doc ID = live.ts → re-archiving the same result is idempotent.
+// Returns true when a round was archived.
+async function archiveRound(db, matchRef) {
+  const m = (await matchRef.get()).data() || {};
+  const live = m.live;
+  if (!live || live.status !== 'FINISHED' || live.home == null) return false;
+  const snap = await db.collection('predictions').get();
+  const winners = winnersFor(snap.docs.map(d => ({ id: d.id, ...d.data() })), m)
+    .map(p => ({ id: p.id, name: p.name, h: p.h, a: p.a, pens: p.pens ?? null }));
+  await db.collection('rounds').doc(String(live.ts)).set({
+    home_name: m.home_name || 'Home', home_flag: m.home_flag || '',
+    away_name: m.away_name || 'Away', away_flag: m.away_flag || '',
+    stage: m.stage || '', info: m.info || '', knockout: !!m.knockout,
+    score: { h: live.home, a: live.away, pens_winner: live.pens_winner ?? null },
+    winners,
+    final_winner: m.final_winner || null,
+    ts: live.ts, archived_ts: Date.now()
+  }, { merge: true });
+  return true;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   const { action, adminKey, ...body } = req.body || {};
@@ -61,7 +85,6 @@ export default async function handler(req, res) {
         away_flag: (body.away_flag || '').trim(),
         info: (body.info || '').trim(),
         stage: (body.stage || '').trim(),
-        locked: false,
         poster_url: (body.poster_url || '').trim(),
         show_poster: !!body.show_poster,
         knockout: !!body.knockout
@@ -69,10 +92,21 @@ export default async function handler(req, res) {
       // kickoff (ISO string) → Firestore Timestamp for auto-lock; null clears it
       if (body.kickoff) data.kickoff = Timestamp.fromDate(new Date(body.kickoff));
       else data.kickoff = null;
-      // football-data id enables live scores; changing the match clears old live data
+      // football-data id enables live scores
       data.fd_id = body.fd_id != null ? body.fd_id : null;
-      data.live = null;
-      data.final_winner = null;   // a new match invalidates any previous draw
+      // setMatch is also how the admin edits details of the *current* match, so only
+      // discard the published result, the lock and any previous draw when it's
+      // genuinely a different match
+      const prev = (await matchRef.get()).data() || {};
+      const isNewMatch = prev.fd_id !== data.fd_id
+        || prev.home_name !== data.home_name
+        || prev.away_name !== data.away_name;
+      if (isNewMatch) {
+        // preserve the outgoing round's winners before its score slot is reused
+        await archiveRound(db, matchRef);
+        data.live = null; data.locked = false; data.final_winner = null;
+      }
+      data.awaiting_next = false;   // a saved match is the announcement — page goes live
       await matchRef.set(data, { merge: true });
       return res.json({ ok: true });
     }
@@ -108,17 +142,28 @@ export default async function handler(req, res) {
       }
       await matchRef.set({
         live: { home, away, status: 'FINISHED', label: 'FULL TIME', ts: Date.now(), pens_winner },
-        final_winner: null   // re-publishing a score invalidates any previous draw
+        final_winner: null,   // re-publishing a score invalidates any previous draw
+        awaiting_next: false  // results are something to show — leave the waiting screen
       }, { merge: true });
       return res.json({ ok: true });
     }
     if (action === 'clear') {
+      // clearing predictions starts a fresh round: archive the finished round first
+      // (so its final winner can still be drawn later from `rounds`), then drop the
+      // manual lock with the predictions — otherwise a lock from the previous round
+      // silently blocks the new one. A kickoff in the past still auto-locks.
+      const archived = await archiveRound(db, matchRef);
       await clearPredictions(db);
-      await matchRef.set({ final_winner: null }, { merge: true });  // no preds → no draw
+      // clearing predictions ends the round: park the page on "next match soon" (the
+      // old match/result stays configured but hidden) until a new match is saved.
+      const patch = { final_winner: null, locked: false, awaiting_next: true };
+      if (archived) patch.live = null;   // score is preserved on the round doc now
+      await matchRef.set(patch, { merge: true });
       return res.json({ ok: true });
     }
     if (action === 'reset') {
       await clearPredictions(db);
+      await clearCollection(db, 'rounds');
       await matchRef.set(DEFAULT_MATCH);
       return res.json({ ok: true });
     }
@@ -156,6 +201,30 @@ export default async function handler(req, res) {
       };
       await matchRef.set({ final_winner }, { merge: true });
       return res.json({ ok: true, final_winner });
+    }
+    if (action === 'drawRoundWinner') {
+      // like finalWinner, but for an ARCHIVED round — pool comes from the round doc
+      const roundId = String(body.roundId || '').trim();
+      if (!roundId) return res.status(400).json({ error: 'Missing round id' });
+      const roundRef = db.collection('rounds').doc(roundId);
+      const r = (await roundRef.get()).data();
+      if (!r) return res.status(400).json({ error: 'Round not found.' });
+      if (r.final_winner) return res.status(400).json({ error: 'Final winner already drawn for this round.' });
+      const winners = r.winners || [];
+      if (!winners.length) return res.status(400).json({ error: 'No winners to draw from.' });
+      const pick = winners[Math.floor(Math.random() * winners.length)];
+      const final_winner = {
+        id: pick.id ?? null, name: pick.name, h: pick.h, a: pick.a,
+        pens: pick.pens ?? null, pool: winners.length, ts: Date.now()
+      };
+      await roundRef.set({ final_winner }, { merge: true });
+      return res.json({ ok: true, final_winner });
+    }
+    if (action === 'deleteRound') {
+      const roundId = String(body.roundId || '').trim();
+      if (!roundId) return res.status(400).json({ error: 'Missing round id' });
+      await db.collection('rounds').doc(roundId).delete();
+      return res.json({ ok: true });
     }
     return res.status(400).json({ error: 'Unknown action' });
   } catch (e) {
