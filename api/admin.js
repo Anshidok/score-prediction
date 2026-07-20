@@ -1,7 +1,7 @@
 // Vercel serverless function: admin actions via Firebase Admin SDK.
 // Protected by ADMIN_KEY. Admin SDK bypasses Firestore security rules.
 // POST /api/admin  body: { action, adminKey, ...payload }
-//   action: setMatch | lock | clear | reset | list | deletePrediction | finalWinner
+//   action: setMatch | lock | clear | reset | list | deletePrediction | finalWinner | winMode
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 
@@ -11,14 +11,27 @@ const DEFAULT_MATCH = {
   info: 'Dec 14, 2024 • 20:00 GMT', stage: 'Group Stage • Match 42',
   locked: false, requireLogin: false, fd_id: null, live: null,
   poster_url: '', show_poster: false, knockout: false, final_winner: null,
-  awaiting_next: false
+  awaiting_next: false, win_mode: 'exact'
 };
 
+// how winners are picked from a published result:
+//   'exact'   — nail the scoreline (plus the advancing side on a knockout draw)
+//   'outcome' — only call the right result (home win / away win / draw)
+const WIN_MODES = ['exact', 'outcome'];
+const winMode = m => (WIN_MODES.includes(m?.win_mode) ? m.win_mode : 'exact');
+// 'home' | 'away' | 'draw' for a scoreline
+const outcomeOf = (h, a) => (h > a ? 'home' : h < a ? 'away' : 'draw');
+
 // the tied winners for a published result. Mirrors the client's isWinner()/pensDecided()
-// (public/app.js): exact score, plus the advancing side when a KNOCKOUT ended level.
+// (public/app.js). In 'outcome' mode penalties are ignored entirely: a knockout that
+// ended level is a draw, so every draw prediction wins regardless of the pens pick.
 function winnersFor(preds, match) {
   const live = match.live;
   if (!live || live.status !== 'FINISHED' || live.home == null) return [];
+  if (winMode(match) === 'outcome') {
+    const res = outcomeOf(live.home, live.away);
+    return preds.filter(p => outcomeOf(p.h, p.a) === res);
+  }
   const pens = !!match.knockout && live.home === live.away && !!live.pens_winner;
   return preds.filter(p =>
     p.h === live.home && p.a === live.away && (!pens || p.pens === live.pens_winner));
@@ -60,6 +73,7 @@ async function archiveRound(db, matchRef) {
     home_name: m.home_name || 'Home', home_flag: m.home_flag || '',
     away_name: m.away_name || 'Away', away_flag: m.away_flag || '',
     stage: m.stage || '', info: m.info || '', knockout: !!m.knockout,
+    win_mode: winMode(m),   // how this round's winners were picked (labels the pool)
     score: { h: live.home, a: live.away, pens_winner: live.pens_winner ?? null },
     winners,
     final_winner: m.final_winner || null,
@@ -105,6 +119,7 @@ export default async function handler(req, res) {
         // preserve the outgoing round's winners before its score slot is reused
         await archiveRound(db, matchRef);
         data.live = null; data.locked = false; data.final_winner = null;
+        data.win_mode = 'exact';   // per-round setting — each new match starts from the default
       }
       data.awaiting_next = false;   // a saved match is the announcement — page goes live
       await matchRef.set(data, { merge: true });
@@ -146,6 +161,14 @@ export default async function handler(req, res) {
         awaiting_next: false  // results are something to show — leave the waiting screen
       }, { merge: true });
       return res.json({ ok: true });
+    }
+    if (action === 'winMode') {
+      // choose how winners are read off the published result. Changing it changes the
+      // pool, so any winner already drawn from the old pool is voided.
+      const mode = String(body.mode || '');
+      if (!WIN_MODES.includes(mode)) return res.status(400).json({ error: 'Unknown winner mode.' });
+      await matchRef.set({ win_mode: mode, final_winner: null }, { merge: true });
+      return res.json({ ok: true, win_mode: mode });
     }
     if (action === 'clear') {
       // clearing predictions starts a fresh round: archive the finished round first

@@ -605,6 +605,34 @@ h2.section {
   background: color-mix(in srgb, var(--brand) 12%, #fff);
   color: var(--brand);
 }
+/* admin winner-mode picker: same chip as .pens-opt, stacked title + description */
+.wm-opt {
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 10px 12px;
+  min-height: 56px;
+  text-align: center;
+  line-height: 1.25;
+  display: flex;
+}
+.wm-opt small {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.wm-opt.active small {
+  color: inherit;
+  opacity: 0.75;
+}
+/* results screen: names the rule the winners below were judged by */
+.win-rule {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: -4px 0 12px;
+}
 .knock-row {
   display: flex;
   align-items: center;

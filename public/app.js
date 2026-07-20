@@ -242,10 +242,29 @@ function isKnockout() { return match?.knockout === true; }
 function pensDecided(result) {
   return isKnockout() && result && result.h === result.a && !!result.pens_winner;
 }
-// single authority for "did this prediction win": must nail the exact score, and
-// for a knockout decided on penalties must also pick the advancing team.
+
+// ── winner mode: how the admin reads winners off the published result ──
+//   'exact'   — nail the scoreline (plus the advancing side on a knockout draw)
+//   'outcome' — only call the right result (home win / away win / draw)
+// Set per round on config/match.win_mode; mirrored server-side in api/admin.js.
+const WIN_MODES = ['exact', 'outcome'];
+// `src` is the match doc by default, or an archived round doc for past rounds
+function winMode(src = match) {
+  return WIN_MODES.includes(src?.win_mode) ? src.win_mode : 'exact';
+}
+// 'home' | 'away' | 'draw' for a scoreline
+const outcomeOf = (h, a) => (h > a ? 'home' : h < a ? 'away' : 'draw');
+// human label for a winning pick, e.g. "Correct score" / "Correct result"
+function winLabel(mode) { return mode === 'outcome' ? 'Correct result' : 'Correct score'; }
+
+// single authority for "did this prediction win". In exact mode it must nail the
+// score, and for a knockout decided on penalties also pick the advancing team. In
+// outcome mode only the result counts — a level knockout is a draw, so every draw
+// prediction wins and the pens pick is ignored.
 function isWinner(p, result) {
-  if (!result || p.h !== result.h || p.a !== result.a) return false;
+  if (!result) return false;
+  if (winMode() === 'outcome') return outcomeOf(p.h, p.a) === outcomeOf(result.h, result.a);
+  if (p.h !== result.h || p.a !== result.a) return false;
   if (pensDecided(result)) return p.pens === result.pens_winner;
   return true;
 }
@@ -321,6 +340,7 @@ function renderMatch() {
   renderMine();     // refresh the private "your prediction" line (team names may have loaded)
   renderNameLock(); // keep the name field vs "Playing as" label in sync
   renderPensPicker(); // knockout: show/label the penalty picker for a draw pick
+  renderWinModePicker(); // admin: keep the winner-mode chips on the live match doc
 
   // once the contest is over, reveal predictions to everyone (not only predictors)
   if (resultFinal() || contestOver()) subscribeConsensus();
@@ -827,6 +847,11 @@ function renderConsensus(preds) {
 
   // dedicated results screen winners list
   if (result && $('rvWinnersList')) $('rvWinnersList').innerHTML = html;
+  if (result && $('rvWinRule')) {
+    $('rvWinRule').textContent = winMode() === 'outcome'
+      ? 'Winners: everyone who called the right result'
+      : 'Winners: everyone who predicted the exact score';
+  }
 
   renderFinalWinner(preds, result);
 
@@ -857,17 +882,21 @@ function renderFinalWinner(preds, result) {
   card.classList.remove('hidden');
 
   // shuffle through the tied names, but only for a draw that lands while we're watching
+  const fwm = { ...fw, mode: winMode() };   // carry the mode into every render below
   const pool = preds.filter(p => isWinner(p, result)).map(p => p.name);
   const willShuffle = fwBootstrapped && pool.length > 1;
   fwSettled = !willShuffle;          // a shuffling draw settles later, in settle()
-  if (willShuffle) shuffleToWinner(pool, fw);
-  else $('finalWinnerBody').innerHTML = finalWinnerHTML(fw);
+  if (willShuffle) shuffleToWinner(pool, fwm);
+  else $('finalWinnerBody').innerHTML = finalWinnerHTML(fwm);
   manageConfetti();
 }
 
+// `fw.mode` is the round's winner mode, attached by the caller (the stored
+// final_winner doc has no mode of its own) so the sub-line names the right pool.
 function finalWinnerHTML(fw, shuffling) {
   const ini = String(fw.name).trim().slice(0, 2).toUpperCase();
-  const sub = fw.pool > 1 ? `Drawn at random from ${fw.pool} correct scores` : 'Only correct score';
+  const label = winLabel(fw.mode).toLowerCase();
+  const sub = fw.pool > 1 ? `Drawn at random from ${fw.pool} ${label}s` : `Only ${label}`;
   return `<div class="lb-item winner${shuffling ? ' fw-shuffling' : ''}"><div class="av">${esc(ini)}</div>
     <div class="nm">${esc(fw.name)}<small>${esc(shuffling ? 'Drawing…' : sub)}</small></div>
     <div class="pt">${fw.h} - ${fw.a}</div></div>`;
@@ -1057,17 +1086,20 @@ function renderRounds() {
 
   list.innerHTML = roundsList.map(r => {
     const winners = r.winners || [];
+    // each round keeps the mode it was judged by, so old rounds keep their labels
+    const mode = winMode(r);
     const poolHTML = winners.length
       ? winners.map(w => {
           const ini = String(w.name).trim().slice(0, 2).toUpperCase();
           return `<div class="lb-item winner"><div class="av">${esc(ini)}</div>
-            <div class="nm">${esc(w.name)}<small>Correct score 🏆</small></div>
+            <div class="nm">${esc(w.name)}<small>${winLabel(mode)} 🏆</small></div>
             <div class="pt">${w.h} - ${w.a}</div></div>`;
         }).join('')
-      : `<div class="empty">No one nailed the exact score.</div>`;
+      : `<div class="empty">${mode === 'outcome'
+          ? 'No one called the right result.' : 'No one nailed the exact score.'}</div>`;
     // drawn winners render settled here; a draw that lands live is animated below
     const fw = r.final_winner;
-    const fwHTML = fw && roundShownTs[r.id] === fw.ts ? finalWinnerHTML(fw)
+    const fwHTML = fw && roundShownTs[r.id] === fw.ts ? finalWinnerHTML({ ...fw, mode })
       : fw ? '' // placeholder — filled (settled or animated) right after this render
       : winners.length ? `<div class="empty">🎯 Final winner not drawn yet.</div>` : '';
     return `<div class="round">
@@ -1092,9 +1124,10 @@ function renderRounds() {
     roundShownTs[r.id] = fw.ts;
     const body = $('roundFw-' + r.id);
     if (!body) continue;
+    const fwm = { ...fw, mode: winMode(r) };
     const pool = (r.winners || []).map(w => w.name);
-    if (roundsBootstrapped && pool.length > 1) shuffleToWinner(pool, fw, body);
-    else body.innerHTML = finalWinnerHTML(fw);
+    if (roundsBootstrapped && pool.length > 1) shuffleToWinner(pool, fwm, body);
+    else body.innerHTML = finalWinnerHTML(fwm);
   }
 }
 
@@ -1122,14 +1155,19 @@ function renderAdminRounds() {
   }).join('');
 }
 
-// markup for the exact-score winners (or an empty-state message)
+// markup for the winners (or an empty-state message)
 function winnersHTML(preds, result) {
   const winners = preds.filter(p => isWinner(p, result));
-  if (!winners.length) return `<div class="empty">No one nailed the exact score.</div>`;
-  const pens = pensDecided(result);
+  const mode = winMode();
+  if (!winners.length) {
+    return `<div class="empty">${mode === 'outcome'
+      ? 'No one called the right result.' : 'No one nailed the exact score.'}</div>`;
+  }
+  // in outcome mode the pens pick is ignored, so it never qualifies the label
+  const pens = mode === 'exact' && pensDecided(result);
   return winners.map(p => {
     const ini = String(p.name).trim().slice(0, 2).toUpperCase();
-    const sub = pens ? `Score + ${esc(sideName(p.pens))} on pens 🏆` : 'Correct score 🏆';
+    const sub = pens ? `Score + ${esc(sideName(p.pens))} on pens 🏆` : `${winLabel(mode)} 🏆`;
     return `<div class="lb-item winner"><div class="av">${esc(ini)}</div>
       <div class="nm">${esc(p.name)}<small>${sub}</small></div>
       <div class="pt">${p.h} - ${p.a}</div></div>`;
@@ -1292,6 +1330,7 @@ function fillAdmin() {
       resPensPick = match.live.pens_winner || null;
     }
     renderResPensPicker();
+    renderWinModePicker();
   }
 }
 
@@ -1310,6 +1349,33 @@ function renderResPensPicker() {
   $('resPensHome').classList.toggle('active', resPensPick === 'home');
   $('resPensAway').classList.toggle('active', resPensPick === 'away');
 }
+// admin: winner-mode picker (config/match.win_mode). Reflects the live match doc,
+// so it stays right for every admin session without local state.
+function renderWinModePicker() {
+  const box = $('winModePicker');
+  if (!box) return;
+  const mode = winMode();
+  $('wmExact').classList.toggle('active', mode === 'exact');
+  $('wmOutcome').classList.toggle('active', mode === 'outcome');
+  $('winModeHint').textContent = mode === 'outcome'
+    ? 'Anyone who called the right result wins — scorelines are ignored, and a knockout that ended level counts as a draw.'
+    : 'Winners must match the published scoreline (plus the team that advanced, on a knockout draw).';
+}
+async function setWinMode(mode) {
+  if (winMode() === mode) return;
+  // the pool changes, so any winner already drawn from the old one is void
+  if (match?.final_winner &&
+      !confirm('A final winner was already drawn. Changing how winners are picked clears it — draw again after switching. Continue?')) {
+    return;
+  }
+  try {
+    await adminPost('winMode', { mode });
+    flash($('adminMsg'), mode === 'outcome'
+      ? 'Winners are now everyone who called the right result.'
+      : 'Winners are now the exact-score predictions.', false);
+  } catch (e) { flash($('adminMsg'), e.message, true); }
+}
+
 async function publishResult() {
   const home = parseInt($('resHome').value), away = parseInt($('resAway').value);
   if (isNaN(home) || isNaN(away)) return flash($('adminMsg'), 'Enter both scores.', true);
@@ -1498,4 +1564,5 @@ setInterval(() => { if (match) renderMatch(); }, 20000);
 // expose handlers to inline onclick attributes
 Object.assign(window, { show, bump, submitPred, unlockAdmin, saveMatch, toggleLock, clearVotes, resetAll,
   deletePrediction, loadFdMatches, applyFdMatch, setFdLink, signInGoogle, signOutUser, toggleAuthMode,
-  publishResult, clearResult, drawFinalWinner, drawRoundWinner, deleteRound, selectPens, selectResPens });
+  publishResult, clearResult, drawFinalWinner, drawRoundWinner, deleteRound, selectPens, selectResPens,
+  setWinMode });

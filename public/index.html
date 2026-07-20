@@ -286,6 +286,7 @@
           <h2 class="section">
             🏆 Winners <span class="live" id="rvFt">FULL TIME</span>
           </h2>
+          <div class="win-rule" id="rvWinRule"></div>
           <div id="rvWinnersList"></div>
         </div>
         <!-- MATCH RESULT (below) -->
@@ -503,18 +504,38 @@
               <button class="btn" onclick="publishResult()">
                 Publish Result
               </button>
-              <button class="btn" onclick="drawFinalWinner()" id="drawWinnerBtn">
-                🎯 Find Final Winner
-              </button>
               <span class="link" onclick="clearResult()">Clear result</span>
             </div>
             <div class="f sub" style="margin-top: 6px">
               Sets the final score to FULL TIME and reveals winners to everyone.
               Works for manual matches too — use it to test before a real match.
             </div>
+
+            <!-- how the published result is turned into a winner pool -->
+            <div id="winModePicker" class="pens-picker">
+              <div class="cap">HOW WINNERS ARE PICKED</div>
+              <div class="pens-opts">
+                <button type="button" class="pens-opt wm-opt" id="wmExact"
+                        onclick="setWinMode('exact')">
+                  🎯 Exact Score<small>Must nail the scoreline</small>
+                </button>
+                <button type="button" class="pens-opt wm-opt" id="wmOutcome"
+                        onclick="setWinMode('outcome')">
+                  ⚽ Which Team Wins<small>Right result only — score ignored</small>
+                </button>
+              </div>
+              <div class="f sub" style="margin-top: 8px" id="winModeHint"></div>
+            </div>
+
+            <!-- draw one name out of that pool -->
+            <div class="row-actions" style="margin-top: 12px">
+              <button class="btn" onclick="drawFinalWinner()" id="drawWinnerBtn">
+                🎯 Find Final Winner
+              </button>
+            </div>
             <div class="f sub" style="margin-top: 6px">
-              <b>Find Final Winner</b> randomly picks one person when several got the
-              exact score. Final once drawn — use Clear result to redo.
+              <b>Find Final Winner</b> randomly picks one person out of the pool above.
+              Final once drawn — use Clear result to redo.
             </div>
             <hr />
             <div class="row-actions">
